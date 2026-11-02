@@ -1,0 +1,36 @@
+meta {
+  name: Public minimal health
+  type: http
+  seq: 14
+}
+
+get {
+  url: {{base_url}}/actuator/health
+  body: none
+  auth: none
+}
+
+tests {
+  test("Expected success status", function () { expect(res.getStatus()).to.equal(200); });
+}
+
+docs {
+  Saved success response example (HTTP 200):
+  ```json
+{
+  "status": "UP"
+}
+  ```
+  Saved error response example (HTTP 404):
+  ```json
+{
+  "success": false,
+  "code": "NOT_FOUND",
+  "message": "Resource not found",
+  "message_fa": "منبع یافت نشد",
+  "data": null,
+  "timestamp": "2026-10-31T12:00:00Z"
+}
+  ```
+  Examples are synthetic fixtures, not live responses. Admin/coach role prerequisites apply.
+}

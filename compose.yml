@@ -1,0 +1,40 @@
+services:
+  user:
+    build:
+      context: .
+      additional_contexts:
+        contracts: ../api-contracts
+    labels:
+      logging: "true"
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8081:8081"
+      - "127.0.0.1:50051:50051"
+    environment:
+      MANAGEMENT_ADDRESS: 0.0.0.0
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/vigo_user_service
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:?Set service DB username}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:?Set service DB password}
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:-kafka:9092}
+      AUTH_JWKS_URI: ${AUTH_JWKS_URI:?Set Auth JWKS URI}
+      JWT_ISSUER: ${JWT_ISSUER:?Set JWT issuer}
+      JWT_AUDIENCE: ${JWT_AUDIENCE:?Set JWT audience}
+      GRPC_BIND_ADDRESS: 0.0.0.0
+      GRPC_DEV_PLAINTEXT_ENABLED: ${GRPC_DEV_PLAINTEXT_ENABLED:-false}
+      GRPC_TLS_CERTIFICATE: ${GRPC_TLS_CERTIFICATE:-}
+      GRPC_TLS_PRIVATE_KEY: ${GRPC_TLS_PRIVATE_KEY:-}
+      GRPC_TLS_TRUST_CERTIFICATE: ${GRPC_TLS_TRUST_CERTIFICATE:-}
+      GRPC_AUTH_SERVICE_IDENTITY: ${GRPC_AUTH_SERVICE_IDENTITY:-}
+      CREDENTIALS_MAX_AGE: ${CREDENTIALS_MAX_AGE:-PT0S}
+    volumes:
+      - ./.keys:/app/.keys:ro
+    networks: [vigo-app]
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+networks:
+  vigo-app:
+    external: true
+    name: ${APP_NETWORK_NAME:-vigo-app}

@@ -1,0 +1,66 @@
+server:
+  port: 8081
+spring:
+  application:
+    name: user-service
+  datasource:
+    url: ${SPRING_DATASOURCE_URL}
+    username: ${SPRING_DATASOURCE_USERNAME}
+    password: ${SPRING_DATASOURCE_PASSWORD}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    enabled: true
+  jackson:
+    property-naming-strategy: SNAKE_CASE
+    deserialization:
+      fail-on-unknown-properties: true
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: all
+      properties:
+        enable.idempotence: true
+        max.in.flight.requests.per.connection: 1
+        delivery.timeout.ms: 30000
+        request.timeout.ms: 10000
+app:
+  jwt:
+    jwks-uri: ${AUTH_JWKS_URI}
+    issuer: ${JWT_ISSUER}
+    audience: ${JWT_AUDIENCE}
+  credentials-max-age: ${CREDENTIALS_MAX_AGE:PT0S}
+  grpc:
+    port: ${GRPC_PORT:50051}
+    bind-address: ${GRPC_BIND_ADDRESS:127.0.0.1}
+    dev-plaintext-enabled: ${GRPC_DEV_PLAINTEXT_ENABLED:false}
+    certificate: ${GRPC_TLS_CERTIFICATE:}
+    private-key: ${GRPC_TLS_PRIVATE_KEY:}
+    trust-certificate: ${GRPC_TLS_TRUST_CERTIFICATE:}
+    auth-service-identity: ${GRPC_AUTH_SERVICE_IDENTITY:}
+  outbox:
+    enabled: ${OUTBOX_ENABLED:true}
+    poll-ms: ${OUTBOX_POLL_MS:1000}
+management:
+  server:
+    port: 9081
+    address: ${MANAGEMENT_ADDRESS:127.0.0.1}
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus
+  endpoint:
+    health:
+      show-details: never
+      show-components: never
+      probes:
+        enabled: true
+      group:
+        readiness:
+          include: readinessState,db,grpc
+        liveness:
+          include: livenessState
