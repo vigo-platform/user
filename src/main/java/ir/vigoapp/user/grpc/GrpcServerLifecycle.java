@@ -2,6 +2,8 @@ package ir.vigoapp.user.grpc;
 import io.grpc.*;
 import io.grpc.netty.shaded.io.grpc.netty.*;
 import io.grpc.netty.shaded.io.netty.handler.ssl.ClientAuth;
+import io.grpc.protobuf.services.ProtoReflectionService;
+import io.grpc.protobuf.services.ProtoReflectionServiceV1;
 import org.springframework.stereotype.Component;
 import org.springframework.context.SmartLifecycle;
 import org.springframework.core.env.Environment;
@@ -10,7 +12,7 @@ import java.net.InetSocketAddress;
 import java.io.File;
 import java.util.Arrays;
 import java.util.concurrent.TimeUnit;
-@Component
+@Component("grpcHealthIndicator")
 public class GrpcServerLifecycle implements SmartLifecycle, HealthIndicator {
  private final UserGrpcEndpoint endpoint;private final Environment env;private volatile Server server;
  public GrpcServerLifecycle(UserGrpcEndpoint endpoint,Environment env){this.endpoint=endpoint;this.env=env;}
@@ -21,9 +23,15 @@ public class GrpcServerLifecycle implements SmartLifecycle, HealthIndicator {
   if(plaintext&&!dev)throw new IllegalStateException("Plaintext requires explicit dev profile and enable flag");
   String identity=env.getProperty("app.grpc.auth-service-identity","");
   try {
-   var builder=NettyServerBuilder.forAddress(new InetSocketAddress(env.getProperty("app.grpc.bind-address","127.0.0.1"),env.getProperty("app.grpc.port",Integer.class,50051)))
+   var bindAddress=new InetSocketAddress(env.getProperty("app.grpc.bind-address","127.0.0.1"),env.getProperty("app.grpc.port",Integer.class,50051));
+   var builder=NettyServerBuilder.forAddress(bindAddress)
     .maxInboundMessageSize(65536).maxConcurrentCallsPerConnection(100)
     .addService(ServerInterceptors.intercept(endpoint,new AuthServiceInterceptor(identity,plaintext)));
+   if(plaintext&&!bindAddress.isUnresolved()&&bindAddress.getAddress().isLoopbackAddress()){
+    builder.addService(ProtoReflectionServiceV1.newInstance());
+    // Bruno's reflection client uses the v1alpha endpoint.
+    builder.addService(ProtoReflectionService.newInstance());
+   }
    if(!plaintext){
     String cert=required("app.grpc.certificate"),key=required("app.grpc.private-key"),trust=required("app.grpc.trust-certificate");
     if(identity.isBlank()||!identity.startsWith("spiffe://"))throw new IllegalStateException("Exact Auth SPIFFE URI SAN required");

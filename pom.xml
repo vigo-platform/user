@@ -18,6 +18,7 @@
  <dependencies>
   <dependency><groupId>ir.vigoapp.contracts</groupId><artifactId>users-grpc-contract</artifactId><version>3.1.0</version></dependency>
   <dependency><groupId>io.grpc</groupId><artifactId>grpc-netty-shaded</artifactId></dependency>
+  <dependency><groupId>io.grpc</groupId><artifactId>grpc-services</artifactId></dependency>
   <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-webmvc</artifactId></dependency>
   <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-security</artifactId></dependency>
   <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-oauth2-resource-server</artifactId></dependency>
