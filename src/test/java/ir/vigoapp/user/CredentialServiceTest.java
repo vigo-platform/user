@@ -20,16 +20,17 @@ class CredentialServiceTest {
   }
   assertThatIllegalArgumentException().isThrownBy(()->Identifiers.phone("09121234567"));
  }
- @Test void createAssignsDefaultsPreservesHashAndPopulatesPublicId(){
+ @Test void createAssignsDefaultsPreservesHashAndPublishesPublicId(){
   when(users.saveAndFlush(any())).thenAnswer(i->{UserAccount u=i.getArgument(0);u.id=4L;return u;});
   String encoded="{argon2}$synthetic$encoded-hash";
   var response=service.create(CreateUserRequest.newBuilder().setEmail(" A@example.COM ").setFirstName("A").setLastName("B").setPasswordHash(encoded).build());
-  assertThat(response.getUserId()).isEqualTo(4);assertThat(response.hasPublicId()).isTrue();assertThat(UUID.fromString(response.getPublicId())).isNotNull();
+  assertThat(response.getUserId()).isEqualTo(4);
   assertThat(response.getRolesList()).containsExactly("ATHLETE");assertThat(response.getStatus()).isEqualTo(UserStatus.USER_STATUS_ACTIVE);
   assertThat(response.getCredentialVersion()).isEqualTo(1);assertThat(response.getCredentialsExpired()).isFalse();assertThat(response.getEmailVerified()).isTrue();assertThat(response.getPhoneVerified()).isFalse();
   ArgumentCaptor<UserAccount> capture=ArgumentCaptor.forClass(UserAccount.class);verify(users).saveAndFlush(capture.capture());
   assertThat(capture.getValue().passwordHash()).isEqualTo(encoded);assertThat(capture.getValue().toString()).doesNotContain(encoded);
-  verify(events).emit(eq(capture.getValue()),eq("UserRegistered"),anyMap());
+  assertThat(capture.getValue().publicId).isNotNull();
+  verify(events).emit(eq(capture.getValue()),eq("UserRegistered"),argThat(data->capture.getValue().publicId.equals(data.get("user_id"))));
  }
  @Test void phoneOnlySignupDoesNotInventVerifiedEmailOrPhone(){
   when(users.saveAndFlush(any())).thenAnswer(i->{UserAccount u=i.getArgument(0);u.id=8L;return u;});
@@ -41,10 +42,10 @@ class CredentialServiceTest {
   assertThat(CredentialService.expired(now.minus(Duration.ofDays(90)),now,Duration.ofDays(90))).isTrue();
   assertThat(CredentialService.expired(now,now,Duration.ofDays(90))).isFalse();
  }
- @Test void allAccountResponsesPopulateExpirationAndPublicId(){
+ @Test void accountResponsesPopulateExpirationAndNumericId(){
   var u=new UserAccount();u.id=5L;u.email="a@example.com";u.displayName="A B";u.replacePassword("unchanged");u.credentialsChangedAt=Instant.now().minus(Duration.ofDays(100));
   service=new CredentialService(users,events,Duration.ofDays(90));when(users.findById(5L)).thenReturn(Optional.of(u));when(users.findByEmail(u.email)).thenReturn(Optional.of(u));
-  var login=service.loginByEmail("A@example.com");assertThat(login.getPasswordHash()).isEqualTo("unchanged");assertThat(login.getUser().getPublicId()).isEqualTo(u.publicId.toString());
+  var login=service.loginByEmail("A@example.com");assertThat(login.getPasswordHash()).isEqualTo("unchanged");assertThat(login.getUser().getUserId()).isEqualTo(u.id);
   assertThat(service.byId(5).getCredentialsExpired()).isTrue();assertThat(service.loginById(5).getUser().getCredentialsExpired()).isTrue();
  }
  @Test void atomicCasReportsAbortedOrNotFound(){

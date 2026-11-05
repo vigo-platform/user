@@ -32,29 +32,27 @@ Static `/me` matchers precede UUID routes and only the coach **GET** single-segm
 
 Read alongside sibling `api-contracts/rest/user.yaml`, `grpc/users.proto`, `events.md`, `docs/user-storage-scope.md` and `auth/docs/user-grpc.md`.
 
-1. Each account has internal positive BIGINT `id` for existing gRPC inputs and unique public UUID `public_id` for REST, JWT sub, Kafka key and aggregate ID. Depend on **users-grpc-contract:3.1.0** with optional `UserAuthInfo.public_id=10`; every response containing UserAuthInfo populates it. Do not substitute 3.0.0: it cannot transport the UUID. ChangePasswordResponse has only credential_version by schema.
-2. The old REST text's gateway-header-only trust is deliberately superseded. This service validates JWTs itself and never reads `X-User-Id`/`X-User-Role` for identity. JWT `sub` must be canonical UUID; role must be ATHLETE/COACH/ADMIN. Access privilege is the intersection of signed role and current DB role. A promotion requires Auth token refresh; a stale elevated token cannot retain downgraded privileges. Every protected request checks local existence/ACTIVE status, so suspension takes effect on the next request (already in-flight work is not cancelled).
-3. Account/profile creation is synchronous and atomic through Auth→User CreateUser, not an auth.events projection. User emits UserRegistered on user.events after creating the account/profile. Thus PROFILE_NOT_READY/retry is not used in this model; no auth.events consumer is added. Auth must adopt UUID public_id before issuing compatible tokens; its current 3.0.0 client does not. Auth login/session revocation integration remains external.
+1. Each account has a positive BIGINT `id` used by **users-grpc-contract:3.1.0** as `user_id`, and a unique UUID `public_id` used by REST and as the Kafka key and aggregate ID.
+2. User validates signed JWTs directly. Auth access tokens (`typ=at+jwt`, `token_use=access`) carry the numeric user ID in `sub` and a `roles` array. User also accepts the existing UUID subject and singular `role` format. Both formats resolve to the account's public UUID for REST operations. Privileges require a signed role that matches the current database role. Every protected request checks that the account exists and is ACTIVE.
+3. Account/profile creation is synchronous and atomic through Auth→User CreateUser. User emits UserRegistered on user.events after creating the account/profile. Auth handles login and session revocation.
 4. Canonical email is stripped and lowercased with Locale.ROOT. Phones are stripped **E.164**, consistently for registration/check/login; local `09...` input is rejected. REST's previous `09...` representation is superseded by E.164 nullable phone. Optional missing email is null (phone-only account allowed). REST phone is null until verified; registration sets email_verified=true only when email is supplied, and phone_verified=false. Approved D5 requires restricted Auth CreateUser to attest that the supplied email already passed OTP verification before signup; User does not verify OTP itself. There is no verification API in this scope. PostgreSQL lower-email unique index and phone unique index enforce race-safe uniqueness without CITEXT. Existence checks remain advisory.
 5. Credential version starts at 1. A single conditional UPDATE swaps hash/version/timestamp only for the expected version; a lost race is gRPC ABORTED, missing account NOT_FOUND. `CREDENTIALS_MAX_AGE` is ISO-8601 duration (`P90D`, for example), defaults **PT0S = disabled**; expired is explicitly computed in every UserAuthInfo response, independently of account status. No password content transformation is performed.
 6. REST exposes only ACTIVE/SUSPENDED account states; proto's pending/deactivated states are not created. Birth date/gender/avatar are profile fields; avatar/result-image references are validated opaque relative Storage URLs, not fetched or uploaded here.
 
 ## Build and tests
 
-Prerequisites: JDK21 (or newer JDK targeting release21), outbound Maven Central access, local/published users-grpc-contract3.1.0. The wrapper is reusable without installed Maven.
+Prerequisites are JDK 21 (or newer targeting release 21) and Maven Central access. To download the published `users-grpc-contract:3.1.0`, configure GitHub Packages credentials under server ID `github-vigo-contracts` in `~/.m2/settings.xml`. A locally installed contract also works.
 
 ```sh
-# From sibling api-contracts, a maintainer must first build/install its 3.1.0 Java contract.
-# This service does not edit or build sibling source automatically.
-./mvnw -B -ntp test
-./mvnw -B -ntp package
+bash ./mvnw -B -ntp test
+bash ./mvnw -B -ntp package
 # Explicit integration suite; needs an already running Docker-compatible engine:
-./mvnw -B -ntp -Pintegration verify
+bash ./mvnw -B -ntp -Pintegration verify
 ```
 
-Windows: use `mvnw.cmd` from this directory. Boot4.1.2/grpc1.85.1 resolved successfully; no version fallback. Unit/security tests require no live JWKS, DB or Kafka. The test decoder trusts only synthetic local RSA keys; negative HTTP cases include foreign signature, HS256/none, unknown role, non-UUID sub, wrong issuer/audience, expiry, spoofed headers, suspension, stale roles, unprotected-me regression, malformed/unknown input and no sessions. Synthetic in-process gRPC exercises all eight RPCs and safe errors. Testcontainers ITs are separate `*IT` classes excluded from default Surefire and use PostgreSQL/Kafka only in the integration Maven profile; Docker absence is explicitly reported **skipped, not passed**. Never start a Docker daemon as part of tests.
+On Windows, use `mvnw.cmd` from this directory. Unit and security tests use synthetic local RSA keys and in-process gRPC. Testcontainers integration tests use PostgreSQL and Kafka through the integration Maven profile and are skipped when Docker is unavailable. Never start a Docker daemon as part of tests.
 
-Final verification in this workspace (JDK 23 compiling with release 21): `./mvnw -B -ntp -Pintegration verify` -> **BUILD SUCCESS**. Surefire: **26 run, 0 failures, 0 errors, 0 skipped** (CredentialServiceTest 6, GrpcEndpointTest 3, GrpcTransportPolicyTest 4, JwtSecurityTest 7, ProfileServiceTest 6). Failsafe PersistenceKafkaIT: **6 run, 6 SKIPPED** because no Docker engine was available. They are not passing results; Postgres migration, uniqueness/CAS race, rollback atomicity, Kafka ACK/mark, retry head-of-line, lease reclaim and two-worker ordering remain unverified against real infrastructure. No live service, TLS handshake with real certificates, Bruno run or container build was executed.
+With JDK 21, `bash ./mvnw -B -ntp -Pintegration clean verify` built the JAR and passed 27 unit and security tests. The six PostgreSQL and Kafka integration tests were skipped because Docker was unavailable.
 
 ## Configuration and local run
 

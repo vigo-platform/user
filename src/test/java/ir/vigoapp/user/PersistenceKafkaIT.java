@@ -31,7 +31,7 @@ class PersistenceKafkaIT {
  @DynamicPropertySource static void properties(DynamicPropertyRegistry p){p.add("spring.datasource.url",postgres::getJdbcUrl);p.add("spring.datasource.username",postgres::getUsername);p.add("spring.datasource.password",postgres::getPassword);p.add("spring.kafka.bootstrap-servers",kafka::getBootstrapServers);}
  @Autowired CredentialService credentials;@Autowired UserRepository users;@Autowired JdbcTemplate jdbc;@Autowired PlatformTransactionManager manager;@Autowired KafkaTemplate<String,String> producer;@Autowired OutboxWriter writer;
  @Test @Order(5) void retryHeadBlocksSuccessorAndExpiredLeaseReclaimsStableEvents(){
-  var created=credentials.create(request("ordered@example.test"));UUID id=UUID.fromString(created.getPublicId());
+  var created=credentials.create(request("ordered@example.test"));UUID id=users.findById(created.getUserId()).orElseThrow().publicId;
   new TransactionTemplate(manager).executeWithoutResult(s->{var u=users.lock(id).orElseThrow();writer.emit(u,"UserStatusChanged",Map.of("user_id",id,"old_status","ACTIVE","new_status","SUSPENDED"));});
   var ids=jdbc.queryForList("select event_id from outbox where aggregate_id=? order by aggregate_version",UUID.class,id);
   @SuppressWarnings("unchecked") KafkaTemplate<String,String> failing=org.mockito.Mockito.mock(KafkaTemplate.class);
@@ -47,7 +47,7 @@ class PersistenceKafkaIT {
   assertThat(jdbc.queryForList("select event_id from outbox where aggregate_id=? order by aggregate_version",UUID.class,id)).containsExactlyElementsOf(ids);
  }
  @Test @Order(6) void twoRelayWorkersCannotOvertakeUnacknowledgedHead()throws Exception{
-  var created=credentials.create(request("workers@example.test"));UUID id=UUID.fromString(created.getPublicId());
+  var created=credentials.create(request("workers@example.test"));UUID id=users.findById(created.getUserId()).orElseThrow().publicId;
   new TransactionTemplate(manager).executeWithoutResult(s->{var u=users.lock(id).orElseThrow();writer.emit(u,"UserRoleChanged",Map.of("user_id",id,"old_role","ATHLETE","new_role","COACH"));});
   @SuppressWarnings("unchecked") KafkaTemplate<String,String> slow=org.mockito.Mockito.mock(KafkaTemplate.class);
   var pending=new CompletableFuture<org.springframework.kafka.support.SendResult<String,String>>();var entered=new CountDownLatch(1);
@@ -89,15 +89,16 @@ class PersistenceKafkaIT {
  }
  @Test @Order(4) void brokerAckThenMarkAndStableEventIds(){
   var u=credentials.create(request("relay@example.test"));
+  UUID id=users.findById(u.getUserId()).orElseThrow().publicId;
   var relay=new OutboxRelay(jdbc,producer,manager,new SimpleMeterRegistry());
   relay.poll();
   assertThat(jdbc.queryForObject("select count(*) from outbox where published_at is null",Long.class)).isZero();
   Properties config=new Properties();config.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG,kafka.getBootstrapServers());config.put(ConsumerConfig.GROUP_ID_CONFIG,UUID.randomUUID().toString());config.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG,"earliest");
   try(var consumer=new KafkaConsumer<String,String>(config,new StringDeserializer(),new StringDeserializer())){
    consumer.subscribe(List.of("user.events"));String event=null;Instant deadline=Instant.now().plusSeconds(20);
-   while(Instant.now().isBefore(deadline)&&event==null){for(var record:consumer.poll(Duration.ofSeconds(1)))if(record.key().equals(u.getPublicId()))event=record.value();}
+   while(Instant.now().isBefore(deadline)&&event==null){for(var record:consumer.poll(Duration.ofSeconds(1)))if(id.toString().equals(record.key()))event=record.value();}
    assertThat(event).isNotNull().contains("UserRegistered","event_id","aggregate_version","user-service").doesNotContain("password_hash","synthetic-unchanged-hash");
-   String stored=jdbc.queryForObject("select payload from outbox where aggregate_id=?",String.class,UUID.fromString(u.getPublicId()));assertThat(event).isEqualTo(stored);
+   String stored=jdbc.queryForObject("select payload from outbox where aggregate_id=?",String.class,id);assertThat(event).isEqualTo(stored);
   }
  }
 }

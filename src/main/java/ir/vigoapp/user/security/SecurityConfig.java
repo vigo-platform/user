@@ -19,20 +19,38 @@ import static org.springframework.http.HttpMethod.*;
 public class SecurityConfig {
  @Bean JwtDecoder jwtDecoder(@Value("${app.jwt.jwks-uri}") String jwks,@Value("${app.jwt.issuer}") String issuer,@Value("${app.jwt.audience}") String audience) {
   if(jwks.isBlank()||issuer.isBlank()||audience.isBlank())throw new IllegalStateException("JWT trust configuration required");
-  NimbusJwtDecoder decoder=NimbusJwtDecoder.withJwkSetUri(jwks).jwsAlgorithm(SignatureAlgorithm.RS256).build();
-  decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(JwtValidators.createDefaultWithIssuer(issuer),claimsValidator(audience)));
+  NimbusJwtDecoder decoder=NimbusJwtDecoder.withJwkSetUri(jwks).jwsAlgorithm(SignatureAlgorithm.RS256).validateType(false).build();
+  decoder.setJwtValidator(tokenValidator(issuer,audience));
   return decoder;
  }
- public static OAuth2TokenValidator<Jwt> claimsValidator(String audience) {
+ public static OAuth2TokenValidator<Jwt> tokenValidator(String issuer,String audience) {
+  var types=new JwtTypeValidator("JWT","at+jwt");
+  types.setAllowEmpty(true);
+  return JwtValidators.createDefaultWithValidators(List.of(new JwtIssuerValidator(issuer),types,claimsValidator(audience)));
+ }
+ private static OAuth2TokenValidator<Jwt> claimsValidator(String audience) {
   return jwt->{
    try {
-    UUID id=UUID.fromString(jwt.getSubject());
-    if(!id.toString().equals(jwt.getSubject()))throw new IllegalArgumentException();
-    Role.valueOf(jwt.getClaimAsString("role"));
+    String subject=jwt.getSubject();
+    if(isAuthAccessToken(jwt)) {
+     long id=Long.parseLong(subject);
+     if(id<=0||!Long.toString(id).equals(subject)||!"access".equals(jwt.getClaim("token_use")))throw new IllegalArgumentException();
+    } else if(!UUID.fromString(subject).toString().equals(subject))throw new IllegalArgumentException();
+    if(signedRoles(jwt).isEmpty())throw new IllegalArgumentException();
     if(!jwt.getAudience().contains(audience)||jwt.getExpiresAt()==null)throw new IllegalArgumentException();
     return OAuth2TokenValidatorResult.success();
    }catch(RuntimeException e){return OAuth2TokenValidatorResult.failure(new OAuth2Error("invalid_token","Invalid access token claims",null));}
   };
+ }
+ private static boolean isAuthAccessToken(Jwt jwt) {
+  return jwt.getHeaders().get("typ") instanceof String type&&"at+jwt".equalsIgnoreCase(type);
+ }
+ private static List<Role> signedRoles(Jwt jwt) {
+  if(isAuthAccessToken(jwt)) {
+   if(!(jwt.getClaim("roles") instanceof List<?> roles))throw new IllegalArgumentException();
+   return roles.stream().map(role->Role.valueOf((String)role)).toList();
+  }
+  return List.of(Role.valueOf(jwt.getClaimAsString("role")));
  }
  @Bean SecurityFilterChain apiSecurity(HttpSecurity http,UserRepository users,ObjectMapper json) throws Exception {
   http.csrf(c->c.disable()).sessionManagement(s->s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
@@ -54,10 +72,12 @@ public class SecurityConfig {
     .anyRequest().denyAll())
    .exceptionHandling(e->e.authenticationEntryPoint((r,s,x)->write(json,s,401)).accessDeniedHandler((r,s,x)->write(json,s,403)))
    .oauth2ResourceServer(o->o.authenticationEntryPoint((r,s,x)->write(json,s,401)).jwt(j->j.jwtAuthenticationConverter(jwt->{
-    var account=users.findByPublicId(UUID.fromString(jwt.getSubject())).orElseThrow(()->new org.springframework.security.oauth2.core.OAuth2AuthenticationException("invalid_token"));
+    String subject=jwt.getSubject();
+    var result=isAuthAccessToken(jwt)?users.findById(Long.parseLong(subject)):users.findByPublicId(UUID.fromString(subject));
+    var account=result.orElseThrow(()->new org.springframework.security.oauth2.core.OAuth2AuthenticationException("invalid_token"));
     if(account.status!=AccountStatus.ACTIVE)throw new org.springframework.security.oauth2.core.OAuth2AuthenticationException("invalid_token");
     // Signed role AND authoritative DB role required. Never read X-User-* headers.
-    var authorities=account.role.name().equals(jwt.getClaimAsString("role"))?List.of(new SimpleGrantedAuthority("ROLE_"+account.role.name())):List.<SimpleGrantedAuthority>of();
+    var authorities=signedRoles(jwt).contains(account.role)?List.of(new SimpleGrantedAuthority("ROLE_"+account.role.name())):List.<SimpleGrantedAuthority>of();
     return new JwtAuthenticationToken(jwt,authorities,account.publicId.toString());
    })));
   return http.build();
