@@ -44,7 +44,7 @@ public class CredentialService {
  }
  private UserLoginInfoResponse login(Optional<UserAccount> result){var u=result.orElseThrow(()->Status.NOT_FOUND.asRuntimeException());return UserLoginInfoResponse.newBuilder().setUser(info(u)).setPasswordHash(u.passwordHash()).build();}
  public UserAuthInfo info(UserAccount u){
-  var b=UserAuthInfo.newBuilder().setUserId(u.id).setPublicId(u.publicId.toString()).addRoles(u.role.name())
+  var b=UserAuthInfo.newBuilder().setUserId(u.id).addRoles(u.role.name())
    .setStatus(u.status==AccountStatus.ACTIVE?UserStatus.USER_STATUS_ACTIVE:UserStatus.USER_STATUS_SUSPENDED)
    .setEmailVerified(u.email!=null&&u.emailVerified).setPhoneVerified(u.phone!=null&&u.phoneVerified)
    .setCredentialVersion(u.credentialVersion).setCredentialsExpired(expired(u.credentialsChangedAt,Instant.now(),maxAge));

@@ -4,10 +4,21 @@
  <parent><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-parent</artifactId><version>4.1.2</version><relativePath/></parent>
  <groupId>ir.vigoapp</groupId><artifactId>user</artifactId><version>0.0.1-SNAPSHOT</version>
  <properties><java.version>21</java.version><grpc.version>1.85.1</grpc.version><testcontainers.version>2.0.4</testcontainers.version></properties>
+ <repositories>
+  <repository>
+   <id>central</id>
+   <url>https://repo.maven.apache.org/maven2</url>
+  </repository>
+  <repository>
+   <id>github-vigo-contracts</id>
+   <url>https://maven.pkg.github.com/vigo-platform/api-contracts</url>
+  </repository>
+ </repositories>
  <dependencyManagement><dependencies><dependency><groupId>io.grpc</groupId><artifactId>grpc-bom</artifactId><version>${grpc.version}</version><type>pom</type><scope>import</scope></dependency></dependencies></dependencyManagement>
  <dependencies>
   <dependency><groupId>ir.vigoapp.contracts</groupId><artifactId>users-grpc-contract</artifactId><version>3.1.0</version></dependency>
   <dependency><groupId>io.grpc</groupId><artifactId>grpc-netty-shaded</artifactId></dependency>
+  <dependency><groupId>io.grpc</groupId><artifactId>grpc-services</artifactId></dependency>
   <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-webmvc</artifactId></dependency>
   <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-security</artifactId></dependency>
   <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-oauth2-resource-server</artifactId></dependency>
@@ -18,6 +29,8 @@
   <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-kafka</artifactId></dependency>
   <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-actuator</artifactId></dependency>
   <dependency><groupId>io.micrometer</groupId><artifactId>micrometer-registry-prometheus</artifactId></dependency>
+  <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-opentelemetry</artifactId></dependency>
+  <dependency><groupId>net.logstash.logback</groupId><artifactId>logstash-logback-encoder</artifactId><version>8.0</version></dependency>
   <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-validation</artifactId></dependency>
   <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-webmvc-test</artifactId><scope>test</scope></dependency>
   <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-security-test</artifactId><scope>test</scope></dependency>

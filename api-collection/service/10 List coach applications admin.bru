@@ -21,31 +21,31 @@ tests {
 docs {
   Saved success response example (HTTP 200):
   ```json
-{
-  "success": true,
-  "code": "SUCCESS",
-  "message": "Operation successful",
-  "message_fa": "عملیات موفق بود",
-  "data": {
-    "page": 0,
-    "size": 20,
-    "total_elements": 0,
-    "total_pages": 0,
-    "content": []
-  },
-  "timestamp": "2026-10-31T12:00:00Z"
-}
+  {
+    "success": true,
+    "code": "SUCCESS",
+    "message": "Operation successful",
+    "message_fa": "عملیات موفق بود",
+    "data": {
+      "page": 0,
+      "size": 20,
+      "total_elements": 0,
+      "total_pages": 0,
+      "content": []
+    },
+    "timestamp": "2026-10-31T12:00:00Z"
+  }
   ```
   Saved error response example (HTTP 401):
   ```json
-{
-  "success": false,
-  "code": "UNAUTHORIZED",
-  "message": "Authentication required",
-  "message_fa": "احراز هویت لازم است",
-  "data": null,
-  "timestamp": "2026-10-31T12:00:00Z"
-}
+  {
+    "success": false,
+    "code": "UNAUTHORIZED",
+    "message": "Authentication required",
+    "message_fa": "احراز هویت لازم است",
+    "data": null,
+    "timestamp": "2026-10-31T12:00:00Z"
+  }
   ```
   Examples are synthetic fixtures, not live responses. Admin/coach role prerequisites apply.
 }

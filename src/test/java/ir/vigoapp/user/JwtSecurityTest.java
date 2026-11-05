@@ -11,7 +11,6 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.security.oauth2.jwt.*;
-import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
 import com.nimbusds.jose.*;
 import com.nimbusds.jose.crypto.*;
 import com.nimbusds.jwt.*;
@@ -31,25 +30,65 @@ class JwtSecurityTest {
  static KeyPair key(){try{var generator=KeyPairGenerator.getInstance("RSA");generator.initialize(2048);return generator.generateKeyPair();}catch(Exception e){throw new IllegalStateException(e);}}
  @TestConfiguration static class Keys {
   @Bean @Primary JwtDecoder realCryptographicDecoder(){
-   var decoder=NimbusJwtDecoder.withPublicKey((RSAPublicKey)KEY.getPublic()).build();
-   decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(JwtValidators.createDefaultWithIssuer(ISSUER),SecurityConfig.claimsValidator("vigo-api")));return decoder;
+   var decoder=NimbusJwtDecoder.withPublicKey((RSAPublicKey)KEY.getPublic()).validateType(false).build();
+   decoder.setJwtValidator(SecurityConfig.tokenValidator(ISSUER,"vigo-api"));return decoder;
   }
  }
  @BeforeEach void setUp(){var u=new UserAccount();u.id=1L;u.publicId=ID;u.role=ir.vigoapp.user.domain.Role.ATHLETE;u.email="synthetic@example.test";u.displayName="Synthetic User";
-  when(users.findByPublicId(ID)).thenReturn(Optional.of(u));when(profiles.get(ID)).thenReturn(Views.profile(u));}
+  when(users.findById(u.id)).thenReturn(Optional.of(u));when(users.findByPublicId(ID)).thenReturn(Optional.of(u));when(profiles.get(ID)).thenReturn(Views.profile(u));}
  String token(KeyPair key,String role,String subject,String issuer,String audience,Instant expires)throws Exception{
   var claims=new JWTClaimsSet.Builder().subject(subject).issuer(issuer).audience(audience).claim("role",role).issueTime(Date.from(Instant.now().minusSeconds(30))).expirationTime(Date.from(expires)).build();
   var jwt=new SignedJWT(new JWSHeader(JWSAlgorithm.RS256),claims);jwt.sign(new RSASSASigner((RSAPrivateKey)key.getPrivate()));return jwt.serialize();
  }
  String good(String role)throws Exception{return token(KEY,role,ID.toString(),ISSUER,"vigo-api",Instant.now().plusSeconds(600));}
+ String authToken(String subject,List<String> roles,String use)throws Exception{
+  Instant now=Instant.now();
+  var claims=new JWTClaimsSet.Builder().subject(subject).issuer(ISSUER).audience("vigo-api")
+   .jwtID(UUID.randomUUID().toString()).issueTime(Date.from(now)).notBeforeTime(Date.from(now)).expirationTime(Date.from(now.plusSeconds(600)))
+   .claim("token_use",use).claim("sid",UUID.randomUUID().toString()).claim("credential_version",1).claim("roles",roles).build();
+  var jwt=new SignedJWT(new JWSHeader.Builder(JWSAlgorithm.RS256).type(new JOSEObjectType("at+jwt")).build(),claims);
+  jwt.sign(new RSASSASigner((RSAPrivateKey)KEY.getPrivate()));return jwt.serialize();
+ }
  @Test void validRealSignedTokenAndSpoofedIdentityIgnored()throws Exception{
   mvc.perform(get("/api/v1/users/me").header("Authorization","Bearer "+good("ATHLETE")).header("X-User-Id",UUID.randomUUID()).header("X-User-Role","ADMIN"))
    .andExpect(status().isOk()).andExpect(jsonPath("$.data.user_id").value(ID.toString())).andExpect(jsonPath("$.data.password_hash").doesNotExist()).andExpect(header().doesNotExist("Set-Cookie"));
+ }
+ @Test void authAccessTokenResolvesNumericIdAndKeepsUuidInRest()throws Exception{
+  String access=authToken("1",List.of("ATHLETE"),"access");
+  mvc.perform(get("/api/v1/users/me").header("Authorization","Bearer "+access))
+   .andExpect(status().isOk()).andExpect(jsonPath("$.data.user_id").value(ID.toString()));
+  mvc.perform(get("/api/v1/users").header("Authorization","Bearer "+authToken("1",List.of("ADMIN"),"access")))
+   .andExpect(status().isForbidden());
+  for(String invalid:List.of(authToken("01",List.of("ATHLETE"),"access"),authToken("1",List.of("ATHLETE"),"refresh"),
+   authToken("1",List.of("ROOT"),"access"),authToken("2",List.of("ATHLETE"),"access")))
+   mvc.perform(get("/api/v1/users/me").header("Authorization","Bearer "+invalid)).andExpect(status().isUnauthorized());
  }
  @Test void headersAloneCannotAuthenticateAndMeIsNotPublic()throws Exception{
   mvc.perform(get("/api/v1/users/me").header("X-User-Id",ID).header("X-User-Role","ADMIN")).andExpect(status().isUnauthorized());
   mvc.perform(get("/api/v1/coaches/me")).andExpect(status().isUnauthorized());
   mvc.perform(get("/api/v1/coaches/"+ID)).andExpect(status().isOk());
+ }
+ @Test void coachListAcceptsAnonymousRequestsAndPaginates()throws Exception{
+  when(profiles.listPublicCoaches(0,20)).thenReturn(new Views.Paged<>(0,20,0,0,List.of()));
+  when(profiles.listPublicCoaches(1,5)).thenReturn(new Views.Paged<>(1,5,6,2,List.of(Map.of("coach_id",ID))));
+
+  mvc.perform(get("/api/v1/coaches"))
+   .andExpect(status().isOk()).andExpect(jsonPath("$.data.page").value(0))
+   .andExpect(jsonPath("$.data.size").value(20)).andExpect(jsonPath("$.data.content").isEmpty());
+  mvc.perform(get("/api/v1/coaches").param("page","1").param("size","5"))
+   .andExpect(status().isOk()).andExpect(jsonPath("$.data.page").value(1))
+   .andExpect(jsonPath("$.data.size").value(5)).andExpect(jsonPath("$.data.total_elements").value(6))
+   .andExpect(jsonPath("$.data.total_pages").value(2)).andExpect(jsonPath("$.data.content[0].coach_id").value(ID.toString()));
+  mvc.perform(post("/api/v1/coaches")).andExpect(status().isUnauthorized());
+ }
+ @Test void coachListRejectsInvalidPagination()throws Exception{
+  for(var invalid:Map.of("page",List.of("-1","abc"),"size",List.of("0","101","abc")).entrySet()){
+   for(String value:invalid.getValue()){
+    mvc.perform(get("/api/v1/coaches").param(invalid.getKey(),value))
+     .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+   }
+  }
+  verifyNoInteractions(profiles);
  }
  @Test void badSignaturesClaimsAndExpiredAreRejected()throws Exception{
   var bad=List.of(token(OTHER,"ATHLETE",ID.toString(),ISSUER,"vigo-api",Instant.now().plusSeconds(300)),token(KEY,"ROOT",ID.toString(),ISSUER,"vigo-api",Instant.now().plusSeconds(300)),token(KEY,"ATHLETE","12",ISSUER,"vigo-api",Instant.now().plusSeconds(300)),token(KEY,"ATHLETE",ID.toString(),"wrong","vigo-api",Instant.now().plusSeconds(300)),token(KEY,"ATHLETE",ID.toString(),ISSUER,"other",Instant.now().plusSeconds(300)),token(KEY,"ATHLETE",ID.toString(),ISSUER,"vigo-api",Instant.now().minusSeconds(3600)));

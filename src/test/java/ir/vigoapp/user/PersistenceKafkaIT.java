@@ -30,8 +30,9 @@ class PersistenceKafkaIT {
  @Container static KafkaContainer kafka=new KafkaContainer("apache/kafka:3.9.1");
  @DynamicPropertySource static void properties(DynamicPropertyRegistry p){p.add("spring.datasource.url",postgres::getJdbcUrl);p.add("spring.datasource.username",postgres::getUsername);p.add("spring.datasource.password",postgres::getPassword);p.add("spring.kafka.bootstrap-servers",kafka::getBootstrapServers);}
  @Autowired CredentialService credentials;@Autowired UserRepository users;@Autowired JdbcTemplate jdbc;@Autowired PlatformTransactionManager manager;@Autowired KafkaTemplate<String,String> producer;@Autowired OutboxWriter writer;
+ @Autowired ProfileService profiles;
  @Test @Order(5) void retryHeadBlocksSuccessorAndExpiredLeaseReclaimsStableEvents(){
-  var created=credentials.create(request("ordered@example.test"));UUID id=UUID.fromString(created.getPublicId());
+  var created=credentials.create(request("ordered@example.test"));UUID id=users.findById(created.getUserId()).orElseThrow().publicId;
   new TransactionTemplate(manager).executeWithoutResult(s->{var u=users.lock(id).orElseThrow();writer.emit(u,"UserStatusChanged",Map.of("user_id",id,"old_status","ACTIVE","new_status","SUSPENDED"));});
   var ids=jdbc.queryForList("select event_id from outbox where aggregate_id=? order by aggregate_version",UUID.class,id);
   @SuppressWarnings("unchecked") KafkaTemplate<String,String> failing=org.mockito.Mockito.mock(KafkaTemplate.class);
@@ -47,7 +48,7 @@ class PersistenceKafkaIT {
   assertThat(jdbc.queryForList("select event_id from outbox where aggregate_id=? order by aggregate_version",UUID.class,id)).containsExactlyElementsOf(ids);
  }
  @Test @Order(6) void twoRelayWorkersCannotOvertakeUnacknowledgedHead()throws Exception{
-  var created=credentials.create(request("workers@example.test"));UUID id=UUID.fromString(created.getPublicId());
+  var created=credentials.create(request("workers@example.test"));UUID id=users.findById(created.getUserId()).orElseThrow().publicId;
   new TransactionTemplate(manager).executeWithoutResult(s->{var u=users.lock(id).orElseThrow();writer.emit(u,"UserRoleChanged",Map.of("user_id",id,"old_role","ATHLETE","new_role","COACH"));});
   @SuppressWarnings("unchecked") KafkaTemplate<String,String> slow=org.mockito.Mockito.mock(KafkaTemplate.class);
   var pending=new CompletableFuture<org.springframework.kafka.support.SendResult<String,String>>();var entered=new CountDownLatch(1);
@@ -65,6 +66,32 @@ class PersistenceKafkaIT {
   new OutboxRelay(jdbc,producer,manager,new SimpleMeterRegistry()).poll();
  }
  CreateUserRequest request(String email){return CreateUserRequest.newBuilder().setEmail(email).setFirstName("Synthetic").setLastName("User").setPasswordHash("synthetic-unchanged-hash").build();}
+ @Test @Order(7) void publicCoachListFiltersBeforePagingAndCounting(){
+  seedCoach("suspended",Role.COACH,AccountStatus.SUSPENDED,CoachStatus.APPROVED);
+  seedCoach("athlete",Role.ATHLETE,AccountStatus.ACTIVE,CoachStatus.APPROVED);
+  seedCoach("pending",Role.COACH,AccountStatus.ACTIVE,CoachStatus.PENDING);
+  UUID first=seedCoach("first",Role.COACH,AccountStatus.ACTIVE,CoachStatus.APPROVED);
+  UUID second=seedCoach("second",Role.COACH,AccountStatus.ACTIVE,CoachStatus.APPROVED);
+
+  var page=profiles.listPublicCoaches(0,1);
+  assertThat(page.total_elements()).isEqualTo(2);
+  assertThat(page.total_pages()).isEqualTo(2);
+  assertThat(page.content()).singleElement().satisfies(coach->assertThat(coach)
+   .containsEntry("coach_id",first).doesNotContainKeys("status","rejection_reason","email","phone"));
+  assertThat(profiles.listPublicCoaches(1,1).content()).extracting(coach->coach.get("coach_id")).containsExactly(second);
+  assertThat(profiles.listPublicCoaches(2,1).content()).isEmpty();
+ }
+ private UUID seedCoach(String name,Role role,AccountStatus accountStatus,CoachStatus coachStatus){
+  long id=credentials.create(request("coach-"+name+"@example.test")).getUserId();
+  jdbc.update("update users set role=?, status=? where id=?",role.name(),accountStatus.name(),id);
+  jdbc.update("""
+   insert into coach_profiles (user_id, display_name, bio, specialties, experience_years,
+    certifications, result_image_urls, status, created_at, updated_at)
+   values (?, ?, 'Synthetic biography', '["fitness"]', 3, '[]', '[]', ?,
+    timestamp '2025-01-01 00:00:00', timestamp '2025-01-01 00:00:00')
+   """,id,name,coachStatus.name());
+  return users.findById(id).orElseThrow().publicId;
+ }
  @Test @Order(1) void migrationAndConcurrentDatabaseUniqueness()throws Exception{
   try(var pool=Executors.newFixedThreadPool(2)){
    var barrier=new CyclicBarrier(2);Callable<Boolean> action=()->{barrier.await();try{credentials.create(request(" UNIQUE@EXAMPLE.TEST "));return true;}catch(org.springframework.dao.DataIntegrityViolationException e){return false;}};
@@ -89,15 +116,16 @@ class PersistenceKafkaIT {
  }
  @Test @Order(4) void brokerAckThenMarkAndStableEventIds(){
   var u=credentials.create(request("relay@example.test"));
+  UUID id=users.findById(u.getUserId()).orElseThrow().publicId;
   var relay=new OutboxRelay(jdbc,producer,manager,new SimpleMeterRegistry());
   relay.poll();
   assertThat(jdbc.queryForObject("select count(*) from outbox where published_at is null",Long.class)).isZero();
   Properties config=new Properties();config.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG,kafka.getBootstrapServers());config.put(ConsumerConfig.GROUP_ID_CONFIG,UUID.randomUUID().toString());config.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG,"earliest");
   try(var consumer=new KafkaConsumer<String,String>(config,new StringDeserializer(),new StringDeserializer())){
    consumer.subscribe(List.of("user.events"));String event=null;Instant deadline=Instant.now().plusSeconds(20);
-   while(Instant.now().isBefore(deadline)&&event==null){for(var record:consumer.poll(Duration.ofSeconds(1)))if(record.key().equals(u.getPublicId()))event=record.value();}
+   while(Instant.now().isBefore(deadline)&&event==null){for(var record:consumer.poll(Duration.ofSeconds(1)))if(id.toString().equals(record.key()))event=record.value();}
    assertThat(event).isNotNull().contains("UserRegistered","event_id","aggregate_version","user-service").doesNotContain("password_hash","synthetic-unchanged-hash");
-   String stored=jdbc.queryForObject("select payload from outbox where aggregate_id=?",String.class,UUID.fromString(u.getPublicId()));assertThat(event).isEqualTo(stored);
+   String stored=jdbc.queryForObject("select payload from outbox where aggregate_id=?",String.class,id);assertThat(event).isEqualTo(stored);
   }
  }
 }

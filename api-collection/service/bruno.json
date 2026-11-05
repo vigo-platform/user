@@ -1,6 +1,11 @@
 {
   "version": "1",
-  "name": "service",
+  "name": "User",
   "type": "collection",
-  "ignore": ["node_modules", ".git", ".env", "environments"]
+  "ignore": [
+    "node_modules",
+    ".git",
+    ".env",
+    "environments"
+  ]
 }

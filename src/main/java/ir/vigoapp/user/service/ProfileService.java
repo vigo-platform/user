@@ -6,11 +6,14 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.data.domain.*;
 import org.springframework.data.jpa.domain.Specification;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import tools.jackson.databind.ObjectMapper;
 import java.time.Instant;
 import java.util.*;
 @Service @Transactional
 public class ProfileService {
+ private static final Logger log=LoggerFactory.getLogger(ProfileService.class);
  private final UserRepository users;private final CoachRepository coaches;private final OutboxWriter events;private final ObjectMapper json;
  public ProfileService(UserRepository users,CoachRepository coaches,OutboxWriter events,ObjectMapper json){this.users=users;this.coaches=coaches;this.events=events;this.json=json;}
  private UserAccount user(UUID id){return users.findByPublicId(id).orElseThrow(ApiException::notFound);}
@@ -35,6 +38,9 @@ public class ProfileService {
    var old=u.status;u.status=request.status();u.updatedAt=Instant.now();
    Map<String,Object> data=new LinkedHashMap<>();data.put("user_id",u.publicId);data.put("old_status",old);data.put("new_status",u.status);data.put("reason",request.reason());data.put("changed_by",actor);
    events.emit(u,"UserStatusChanged",data);
+   log.atInfo().addKeyValue("event","user_status_change_staged").addKeyValue("result","STAGED")
+    .addKeyValue("actor_public_id",actor).addKeyValue("user_public_id",target).addKeyValue("old_status",old).addKeyValue("new_status",u.status)
+    .log("User account status change staged in the transaction.");
   }return Views.profile(u);
  }
  public Map<String,Object> apply(UUID id,Requests.Coach r){
@@ -44,6 +50,14 @@ public class ProfileService {
  }
  public Map<String,Object> own(UUID id){return Views.coach(coach(id),true,json);}
  public Map<String,Object> publicCoach(UUID id){var c=coach(id);if(c.status!=CoachStatus.APPROVED||c.user.status!=AccountStatus.ACTIVE||c.user.role!=Role.COACH)throw ApiException.notFound();return Views.coach(c,false,json);}
+
+ @Transactional(readOnly=true)
+ public Views.Paged<Map<String,Object>> listPublicCoaches(int page,int size){
+  var pageable=PageRequest.of(page,size,Sort.by("createdAt").descending().and(Sort.by("userId")));
+  var result=coaches.findAllByStatusAndUser_StatusAndUser_Role(CoachStatus.APPROVED,AccountStatus.ACTIVE,Role.COACH,pageable);
+  return Views.page(result,c->Views.coach(c,false,json));
+ }
+
  public Map<String,Object> adminCoach(UUID id){return Views.coach(coach(id),true,json);}
  public Map<String,Object> updateCoach(UUID id,Requests.Coach r){
   var u=activeLocked(id);if(u.role!=Role.ATHLETE&&u.role!=Role.COACH)throw ApiException.forbidden();

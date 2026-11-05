@@ -1,6 +1,6 @@
 # Vigo User service
 
-Java 21, Spring Boot **4.1.2**, Maven wrapper 3.9.16 copied from API Gateway. Group `ir.vigoapp`, package `ir.vigoapp.user`; HTTP **8081**, gRPC **50051**, private management **9081**. No commits, remote or infrastructure provisioning is performed by this implementation.
+Java 21, Spring Boot **4.1.2**, Maven wrapper 3.9.16 copied from API Gateway. Group `ir.vigoapp`, package `ir.vigoapp.user`; HTTP **8081**, gRPC **50051**, private management **8082**. No commits, remote or infrastructure provisioning is performed by this implementation.
 
 ## Approved scope / backlog mapping
 
@@ -14,7 +14,7 @@ Java 21, Spring Boot **4.1.2**, Maven wrapper 3.9.16 copied from API Gateway. Gr
 | SCRUM-45 — Transactional outbox/Kafka user.events | OutboxWriter/OutboxRelay; aggregate sequences, stable IDs, head-of-line leasing/fencing, broker ACK before mark | rollback, retry/reclaim, concurrent worker, real Kafka IT |
 | SCRUM-46 — Unit/integration/security review | `src/test/`, explicit integration profile; security decisions below | exact commands/results below; live infra limitations remain |
 
-**No public registration or auth endpoint.** No login, password policy/hashing/verification, OTP, token issuance/refresh, plans, relations, marketplace coach listing, media, or internal REST APIs. Password change/reset authorization belongs to Auth; User stores the complete encoded hash unchanged. Credential values are never part of REST DTOs, event payloads or application logging. Unknown request fields are rejected, including role/status/email/phone in profile updates.
+**No public registration or auth endpoint.** No login, password policy/hashing/verification, OTP, token issuance/refresh, plans, relations, media, or internal REST APIs. Password change/reset authorization belongs to Auth; User stores the complete encoded hash unchanged. Credential values are never part of REST DTOs, event payloads or application logging. Unknown request fields are rejected, including role/status/email/phone in profile updates.
 
 ### Supported HTTP operations
 
@@ -22,39 +22,52 @@ Java 21, Spring Boot **4.1.2**, Maven wrapper 3.9.16 copied from API Gateway. Gr
 - `GET /api/v1/users`, `GET /api/v1/users/{user_id}`, `PATCH /api/v1/users/{user_id}/status` — ADMIN.
 - `POST /api/v1/coaches/me/profile` — ATHLETE only, creates PENDING.
 - `GET`, `PUT /api/v1/coaches/me` — applicant ATHLETE or COACH.
+- `GET /api/v1/coaches?page=0&size=20` — public list of approved coaches with active `COACH` accounts, newest first. `page` starts at 0 and `size` accepts 1–100. The response contains `data.content`, `data.page`, `data.size`, `data.total_elements` and `data.total_pages`.
 - `GET /api/v1/coaches/{coach_id}` — anonymous, APPROVED + ACTIVE + authoritative COACH only. Never returns review status/rejection reason.
 - `GET /api/v1/admin/coaches`, `GET /api/v1/admin/coaches/{coach_id}`, `POST /api/v1/admin/coaches/{coach_id}/approve`, `POST .../reject` — ADMIN.
-- Actuator runs on a separate management server, port **9081** (`MANAGEMENT_ADDRESS`, default 127.0.0.1; Compose sets 0.0.0.0 inside the container so Prometheus on the shared network scrapes `user:9081/actuator/prometheus`, without publishing 9081 to the host). Only `health` and `prometheus` are exposed; health shows no details/components; probes enabled with readiness = readinessState, db, grpc (gRPC server running) and liveness = livenessState. The application port 8081 denies `/actuator/**` except a minimal health matcher, so application data and metrics never share an endpoint. Docker HEALTHCHECK calls `127.0.0.1:9081/actuator/health`. Compose adds label `logging: "true"` for the shared Vector collector.
+- Actuator runs on a separate management server. `MANAGEMENT_PORT` defaults to **8082** and `MANAGEMENT_ADDRESS` defaults to `127.0.0.1`. Compose binds the management server to `0.0.0.0` inside the container so Prometheus on the shared network can scrape `user:8082/actuator/prometheus`. Health shows the aggregate status. Readiness checks the readiness state, database, and gRPC server. Liveness checks the liveness state. Docker checks `/actuator/health` on the configured management port. The `logging: "true"` label enables the shared Vector collector.
 
-Static `/me` matchers precede UUID routes and only the coach **GET** single-segment route is public. Unimplemented routes/methods are denied by default. JSON uses snake_case and bilingual English/Persian envelopes; actuator endpoints intentionally use their standard formats. User/coach pagination is deterministic, size 1–100, page >=0. Approval/rejection only from PENDING; editing REJECTED re-submits to PENDING, approved edits apply immediately. `min_plan_price=null` and `active_athletes_count=0` are placeholders, not a plan/subscription backend.
+Static `/me` matchers precede UUID routes. The coach list and individual public coach profiles are accessible without authentication via **GET**. Unimplemented routes/methods are denied by default. JSON uses snake_case and bilingual English/Persian envelopes; actuator endpoints intentionally use their standard formats. User/coach pagination is deterministic, size 1–100, page >=0. Approval/rejection only from PENDING; editing REJECTED re-submits to PENDING, approved edits apply immediately. `min_plan_price=null` and `active_athletes_count=0` are placeholders, not a plan/subscription backend.
 
 ## Contract decisions / intentional overrides
 
 Read alongside sibling `api-contracts/rest/user.yaml`, `grpc/users.proto`, `events.md`, `docs/user-storage-scope.md` and `auth/docs/user-grpc.md`.
 
-1. Each account has internal positive BIGINT `id` for existing gRPC inputs and unique public UUID `public_id` for REST, JWT sub, Kafka key and aggregate ID. Depend on **users-grpc-contract:3.1.0** with optional `UserAuthInfo.public_id=10`; every response containing UserAuthInfo populates it. Do not substitute 3.0.0: it cannot transport the UUID. ChangePasswordResponse has only credential_version by schema.
-2. The old REST text's gateway-header-only trust is deliberately superseded. This service validates JWTs itself and never reads `X-User-Id`/`X-User-Role` for identity. JWT `sub` must be canonical UUID; role must be ATHLETE/COACH/ADMIN. Access privilege is the intersection of signed role and current DB role. A promotion requires Auth token refresh; a stale elevated token cannot retain downgraded privileges. Every protected request checks local existence/ACTIVE status, so suspension takes effect on the next request (already in-flight work is not cancelled).
-3. Account/profile creation is synchronous and atomic through Auth→User CreateUser, not an auth.events projection. User emits UserRegistered on user.events after creating the account/profile. Thus PROFILE_NOT_READY/retry is not used in this model; no auth.events consumer is added. Auth must adopt UUID public_id before issuing compatible tokens; its current 3.0.0 client does not. Auth login/session revocation integration remains external.
+1. Each account has a positive BIGINT `id` used by **users-grpc-contract:3.1.0** as `user_id`, and a unique UUID `public_id` used by REST and as the Kafka key and aggregate ID.
+2. User validates signed JWTs directly. Auth access tokens (`typ=at+jwt`, `token_use=access`) carry the numeric user ID in `sub` and a `roles` array. User also accepts the existing UUID subject and singular `role` format. Both formats resolve to the account's public UUID for REST operations. Privileges require a signed role that matches the current database role. Every protected request checks that the account exists and is ACTIVE.
+3. Account/profile creation is synchronous and atomic through Auth→User CreateUser. User emits UserRegistered on user.events after creating the account/profile. Auth handles login and session revocation.
 4. Canonical email is stripped and lowercased with Locale.ROOT. Phones are stripped **E.164**, consistently for registration/check/login; local `09...` input is rejected. REST's previous `09...` representation is superseded by E.164 nullable phone. Optional missing email is null (phone-only account allowed). REST phone is null until verified; registration sets email_verified=true only when email is supplied, and phone_verified=false. Approved D5 requires restricted Auth CreateUser to attest that the supplied email already passed OTP verification before signup; User does not verify OTP itself. There is no verification API in this scope. PostgreSQL lower-email unique index and phone unique index enforce race-safe uniqueness without CITEXT. Existence checks remain advisory.
 5. Credential version starts at 1. A single conditional UPDATE swaps hash/version/timestamp only for the expected version; a lost race is gRPC ABORTED, missing account NOT_FOUND. `CREDENTIALS_MAX_AGE` is ISO-8601 duration (`P90D`, for example), defaults **PT0S = disabled**; expired is explicitly computed in every UserAuthInfo response, independently of account status. No password content transformation is performed.
 6. REST exposes only ACTIVE/SUSPENDED account states; proto's pending/deactivated states are not created. Birth date/gender/avatar are profile fields; avatar/result-image references are validated opaque relative Storage URLs, not fetched or uploaded here.
 
 ## Build and tests
 
-Prerequisites: JDK21 (or newer JDK targeting release21), outbound Maven Central access, local/published users-grpc-contract3.1.0. The wrapper is reusable without installed Maven.
+Prerequisites are JDK 21 (or newer targeting release 21) and Maven Central access. To download the published `users-grpc-contract:3.1.0`, configure GitHub Packages credentials under server ID `github-vigo-contracts` in `~/.m2/settings.xml`. A locally installed contract also works.
 
 ```sh
-# From sibling api-contracts, a maintainer must first build/install its 3.1.0 Java contract.
-# This service does not edit or build sibling source automatically.
-./mvnw -B -ntp test
-./mvnw -B -ntp package
+bash ./mvnw -B -ntp test
+bash ./mvnw -B -ntp package
 # Explicit integration suite; needs an already running Docker-compatible engine:
-./mvnw -B -ntp -Pintegration verify
+bash ./mvnw -B -ntp -Pintegration verify
 ```
 
-Windows: use `mvnw.cmd` from this directory. Boot4.1.2/grpc1.85.1 resolved successfully; no version fallback. Unit/security tests require no live JWKS, DB or Kafka. The test decoder trusts only synthetic local RSA keys; negative HTTP cases include foreign signature, HS256/none, unknown role, non-UUID sub, wrong issuer/audience, expiry, spoofed headers, suspension, stale roles, unprotected-me regression, malformed/unknown input and no sessions. Synthetic in-process gRPC exercises all eight RPCs and safe errors. Testcontainers ITs are separate `*IT` classes excluded from default Surefire and use PostgreSQL/Kafka only in the integration Maven profile; Docker absence is explicitly reported **skipped, not passed**. Never start a Docker daemon as part of tests.
+On Windows, use `mvnw.cmd` from this directory. Unit and security tests use synthetic local RSA keys and in-process gRPC. Testcontainers integration tests use PostgreSQL and Kafka through the integration Maven profile and are skipped when Docker is unavailable. Never start a Docker daemon as part of tests.
 
-Final verification in this workspace (JDK 23 compiling with release 21): `./mvnw -B -ntp -Pintegration verify` -> **BUILD SUCCESS**. Surefire: **26 run, 0 failures, 0 errors, 0 skipped** (CredentialServiceTest 6, GrpcEndpointTest 3, GrpcTransportPolicyTest 4, JwtSecurityTest 7, ProfileServiceTest 6). Failsafe PersistenceKafkaIT: **6 run, 6 SKIPPED** because no Docker engine was available. They are not passing results; Postgres migration, uniqueness/CAS race, rollback atomicity, Kafka ACK/mark, retry head-of-line, lease reclaim and two-worker ordering remain unverified against real infrastructure. No live service, TLS handshake with real certificates, Bruno run or container build was executed.
+With JDK 21, `bash ./mvnw -B -ntp -Pintegration clean verify` built the JAR and passed 27 unit and security tests. The six PostgreSQL and Kafka integration tests were skipped because Docker was unavailable.
+
+## Docker build and publishing
+
+The Docker build downloads the published gRPC contract from GitHub Packages. Configure the `github-vigo-contracts` server in your Maven settings and pass the file as a BuildKit secret.
+
+```sh
+docker build --secret id=maven_settings,src="$HOME/.m2/settings.xml" -t logtaha/vigo-user-service .
+```
+
+`docker compose build` uses `$HOME/.m2/settings.xml` by default. Set `MAVEN_SETTINGS_FILE` to use another settings file.
+
+The `Docker Build & Push` workflow publishes to `logtaha/vigo-user-service` on Docker Hub. The Git tag `build-and-push` or a manual run with an empty tag publishes `sha-<short-sha>`. The Git tag `build-and-push-<version>` or a manual run with a tag publishes both that tag and `latest`.
+
+Configure `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN` and `MAVEN_TOKEN` as GitHub Actions secrets. Set `MAVEN_USERNAME` as a secret or variable. Use a classic GitHub personal access token with `read:packages` for `MAVEN_TOKEN` and give its owner access to the contracts package.
 
 ## Configuration and local run
 
@@ -62,8 +75,9 @@ Spring does **not** automatically import `.env`. Copy `.env.example` to untracke
 
 - Provision database **vigo_user_service** before startup; Flyway creates tables, Hibernate validates, open-in-view off, timestamps timestamptz. Dev may share the shared PostgreSQL credentials. Production should have a dedicated service login/schema owner and a separate migration identity, least-privilege SQL grants, encrypted connections/backups; do not share superuser credentials.
 - Shared Kafka already provisioned by the parent project: host `localhost:19092`, containers `kafka:9092`, topic `user.events`. Compose joins external configurable `${APP_NETWORK_NAME:-vigo-app}`; it does not create the network or shared DB/Kafka.
-- Image build is multi-stage from source. The builder stage needs the named build context `contracts` (sibling `api-contracts`); it copies only `grpc/`, `scripts/grpc_release.py`, `build-support/grpc-pom.xml`, `mvnw` and `.mvn/wrapper/maven-wrapper.properties` (no `.git`, `target`, tokens), runs `grpc_release.py prepare --contract users --version 3.1.0`, installs the contract into the builder's Maven repository, then packages this service. Compose sets `additional_contexts: contracts: ../api-contracts`; standalone: `docker build --build-context contracts=../api-contracts -t vigo-user .` (BuildKit required). `.dockerignore` sends only wrapper, pom and src. Run `docker compose build` / `docker compose up -d` **only when intentionally deploying**; this Dockerfile was not built here (no Docker engine). The `prepare` CLI arguments are taken from the contract script's documented contract/version inputs; verify against that script if its CLI changes. Image runs nonroot, read-only filesystem + /tmp tmpfs, no capabilities, healthcheck uses installed curl. Port mappings bind loopback only (8081/50051); management9081 is not published.
+- The image runs as the nonroot `vigo` user and checks health on the management port. Compose uses a read-only filesystem with a `/tmp` tmpfs, drops all capabilities, and publishes the HTTP and gRPC ports on loopback.
 - Host process: export variables, set explicitly selected gRPC mode below, then `./mvnw spring-boot:run`. No app/services were started for this implementation beyond synthetic tests.
+- Host logging uses the Auth terminal format and sends JSON to Vector at `localhost:5044`. Set `LOGGING_VECTOR_DESTINATION` to override the address or set it to an empty value for console-only output. The Docker image writes JSON to stdout for Vector's `logging=true` collection. Vector forwards both sources to Elasticsearch.
 
 ### gRPC transport / service authentication
 
@@ -109,9 +123,11 @@ Metrics: `user_outbox_backlog`, `user_outbox_lag_seconds`, `user_outbox_retries_
 
 ## Bruno / gRPC tooling
 
-Open literal **api-collection/service/** in Bruno: native bruno.json and .bru files for all13 REST operations plus health and private Prometheus. Each includes saved synthetic success/error fixtures in native docs, role prerequisites and status assertion. Copy `api-collection/service/.env.example` to untracked `.env` and set `USER_BEARER_TOKEN` there (or a secret runtime environment); the checked-in `environments/Local.example.bru` holds only non-secret URLs/sample UUIDs and references `process.env.USER_BEARER_TOKEN`. Other environment files and `.env` are git-ignored; do not save credentials. Sample UUIDs are not seeded accounts. For Prometheus use a host process/private forwarded management endpoint; Compose intentionally does not expose9081.
+In Bruno, use **Open Collection** and select `api-collection/service/`. The **User** collection contains 13 REST requests plus health and private Prometheus. Bruno 4.3.0 successfully parsed all 15 requests, the collection settings, and the sample environment. The response examples are synthetic fixtures.
 
-No Bruno binary/version is installed in this workspace. Native HTTP requests were authored but not executed or imported; native gRPC/proto-loading support cannot be verified against a concrete Bruno version, so no unverified fake gRPC .bru syntax is claimed. Exact gRPC coverage is instead the executable GrpcEndpointTest all-eight-RPC synthetic suite. For manual grpcurl use the sibling proto explicitly (reflection intentionally disabled):
+For protected requests, copy `api-collection/service/.env.example` to an untracked `.env` in the collection directory and set `USER_BEARER_TOKEN`. Replace the sample UUIDs with real account IDs as needed. For Prometheus, use the private management endpoint on port 8082.
+
+`GrpcEndpointTest` exercises all eight gRPC methods in process. To call them manually, point `grpcurl` at the sibling proto file.
 
 ```sh
 # Authorized mTLS: add -cacert <service-ca.crt> -cert <auth-client.crt> -key <auth-client.key>.
