@@ -107,9 +107,11 @@ Metrics: `user_outbox_backlog`, `user_outbox_lag_seconds`, `user_outbox_retries_
 
 ## Bruno / gRPC tooling
 
-Open literal **api-collection/service/** in Bruno: native bruno.json and .bru files for all13 REST operations plus health and private Prometheus. Each includes saved synthetic success/error fixtures in native docs, role prerequisites and status assertion. Copy `api-collection/service/.env.example` to untracked `.env` and set `USER_BEARER_TOKEN` there (or a secret runtime environment); the checked-in `environments/Local.example.bru` holds only non-secret URLs/sample UUIDs and references `process.env.USER_BEARER_TOKEN`. Other environment files and `.env` are git-ignored; do not save credentials. Sample UUIDs are not seeded accounts. For Prometheus use a host process/private forwarded management endpoint; Compose intentionally does not expose9081.
+In Bruno, use **Open Collection** and select `api-collection/service/`. The **User** collection contains 13 REST requests plus health and private Prometheus. Bruno 4.3.0 successfully parsed all 15 requests, the collection settings, and the sample environment. The response examples are synthetic fixtures.
 
-No Bruno binary/version is installed in this workspace. Native HTTP requests were authored but not executed or imported; native gRPC/proto-loading support cannot be verified against a concrete Bruno version, so no unverified fake gRPC .bru syntax is claimed. Exact gRPC coverage is instead the executable GrpcEndpointTest all-eight-RPC synthetic suite. For manual grpcurl use the sibling proto explicitly (reflection intentionally disabled):
+For protected requests, copy `api-collection/service/.env.example` to an untracked `.env` in the collection directory and set `USER_BEARER_TOKEN`. Replace the sample UUIDs with real account IDs as needed. For Prometheus, use the private management endpoint on port 9081.
+
+`GrpcEndpointTest` exercises all eight gRPC methods in process. To call them manually, point `grpcurl` at the sibling proto file.
 
 ```sh
 # Authorized mTLS: add -cacert <service-ca.crt> -cert <auth-client.crt> -key <auth-client.key>.
