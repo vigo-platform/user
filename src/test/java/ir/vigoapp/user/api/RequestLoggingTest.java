@@ -114,6 +114,15 @@ class RequestLoggingTest {
         assertThat(output.getAll()).doesNotContain("secret@example.test", "broken@example.test", "secret-encoded-hash", "secret-db-value");
     }
 
+    @Test void probesAndMetricsAreAvailableOnTheBoundManagementPort() throws Exception {
+        try (var client = HttpClient.newHttpClient()) {
+            assertThat(get(client, managementPort, "/actuator/health/liveness", null)).isEqualTo(200);
+            assertThat(get(client, managementPort, "/actuator/health/readiness", null)).isEqualTo(200);
+            assertThat(get(client, managementPort, "/actuator/prometheus", null)).isEqualTo(200);
+            assertThat(get(client, port, "/actuator/prometheus", null)).isEqualTo(401);
+        }
+    }
+
     private static int get(HttpClient client, int port, String path, String traceparent) throws Exception {
         var request = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + path)).timeout(Duration.ofSeconds(5));
         if (traceparent != null) request.header("traceparent", traceparent);

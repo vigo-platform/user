@@ -55,7 +55,7 @@ management:
       export:
         enabled: false
   server:
-    port: 9081
+    port: ${MANAGEMENT_PORT:8082}
     address: ${MANAGEMENT_ADDRESS:127.0.0.1}
   endpoints:
     web:

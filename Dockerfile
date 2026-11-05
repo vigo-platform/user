@@ -24,5 +24,5 @@ WORKDIR /app
 COPY --from=builder --chown=vigo:vigo /build/target/user-0.0.1-SNAPSHOT.jar /app/app.jar
 USER vigo:vigo
 EXPOSE 8081 50051
-HEALTHCHECK --interval=30s --timeout=4s --start-period=45s --retries=3 CMD curl --fail --silent http://127.0.0.1:9081/actuator/health || exit 1
+HEALTHCHECK --interval=30s --timeout=4s --start-period=45s --retries=3 CMD curl --fail --silent "http://127.0.0.1:${MANAGEMENT_PORT:-8082}/actuator/health" || exit 1
 ENTRYPOINT ["java","-jar","/app/app.jar"]

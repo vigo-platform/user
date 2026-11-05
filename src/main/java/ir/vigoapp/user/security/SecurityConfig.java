@@ -7,6 +7,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.env.Environment;
+import org.springframework.security.authorization.AuthorizationDecision;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
@@ -56,7 +58,7 @@ public class SecurityConfig {
   }
   return List.of(Role.valueOf(jwt.getClaimAsString("role")));
  }
- @Bean SecurityFilterChain apiSecurity(HttpSecurity http,UserRepository users,ObjectMapper json) throws Exception {
+ @Bean SecurityFilterChain apiSecurity(HttpSecurity http,UserRepository users,ObjectMapper json,Environment environment) throws Exception {
   http.csrf(c->c.disable()).sessionManagement(s->s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
    .requestCache(c->c.disable()).formLogin(c->c.disable()).httpBasic(c->c.disable()).logout(c->c.disable())
    .authorizeHttpRequests(a->a
@@ -71,8 +73,9 @@ public class SecurityConfig {
     .requestMatchers(POST,"/api/v1/admin/coaches/{id}/approve","/api/v1/admin/coaches/{id}/reject").hasRole("ADMIN")
     .requestMatchers(GET,"/api/v1/coaches/{id}").permitAll()
     .requestMatchers(GET,"/actuator/health").permitAll()
-    .requestMatchers(GET,"/actuator/health/liveness","/actuator/health/readiness").access((authentication,context)->new org.springframework.security.authorization.AuthorizationDecision(context.getRequest().getLocalPort()==9081))
-    .requestMatchers(GET,"/actuator/prometheus").access((authentication,context)->new org.springframework.security.authorization.AuthorizationDecision(context.getRequest().getLocalPort()==9081))
+    .requestMatchers(GET,"/actuator/health/liveness","/actuator/health/readiness","/actuator/prometheus")
+    .access((authentication,context)->new AuthorizationDecision(
+     context.getRequest().getLocalPort()==environment.getProperty("local.management.port",Integer.class,-1)))
     .anyRequest().denyAll())
    .exceptionHandling(e->e.authenticationEntryPoint((r,s,x)->write(json,r,s,401,x)).accessDeniedHandler((r,s,x)->write(json,r,s,403,x)))
    .oauth2ResourceServer(o->o.authenticationEntryPoint((r,s,x)->write(json,r,s,401,x)).jwt(j->j.jwtAuthenticationConverter(jwt->{
