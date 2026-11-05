@@ -71,7 +71,7 @@ public class SecurityConfig {
     .requestMatchers(PATCH,"/api/v1/users/{id}/status").hasRole("ADMIN")
     .requestMatchers(GET,"/api/v1/admin/coaches","/api/v1/admin/coaches/{id}").hasRole("ADMIN")
     .requestMatchers(POST,"/api/v1/admin/coaches/{id}/approve","/api/v1/admin/coaches/{id}/reject").hasRole("ADMIN")
-    .requestMatchers(GET,"/api/v1/coaches/{id}").permitAll()
+    .requestMatchers(GET,"/api/v1/coaches","/api/v1/coaches/{id}").permitAll()
     .requestMatchers(GET,"/actuator/health").permitAll()
     .requestMatchers(GET,"/actuator/health/liveness","/actuator/health/readiness","/actuator/prometheus")
     .access((authentication,context)->new AuthorizationDecision(

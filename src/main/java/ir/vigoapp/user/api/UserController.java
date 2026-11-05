@@ -7,6 +7,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import java.util.Map;
 import java.util.UUID;
 @RestController @RequestMapping("/api/v1")
 public class UserController {
@@ -27,6 +28,12 @@ public class UserController {
  }
  @GetMapping("/coaches/me") public Envelope<?> own(Authentication a){return Envelope.ok(service.own(id(a)));}
  @PutMapping("/coaches/me") public Envelope<?> updateCoach(Authentication a,@Valid @RequestBody Requests.Coach r){return Envelope.ok(service.updateCoach(id(a),r));}
+ @GetMapping("/coaches")
+ public Envelope<Views.Paged<Map<String,Object>>> publicCoaches(
+  @RequestParam(defaultValue="0") @Min(0) int page,
+  @RequestParam(defaultValue="20") @Min(1) @Max(100) int size){
+  return Envelope.ok(service.listPublicCoaches(page,size));
+ }
  @GetMapping("/coaches/{coach_id}") public Envelope<?> coach(@PathVariable UUID coach_id){return Envelope.ok(service.publicCoach(coach_id));}
  @GetMapping("/admin/coaches") public Envelope<?> applications(@RequestParam(defaultValue="0") @Min(0) int page,@RequestParam(defaultValue="20") @Min(1) @Max(100) int size,@RequestParam(required=false) CoachStatus status){return Envelope.ok(service.listCoaches(page,size,status));}
  @GetMapping("/admin/coaches/{coach_id}") public Envelope<?> application(@PathVariable UUID coach_id){return Envelope.ok(service.adminCoach(coach_id));}

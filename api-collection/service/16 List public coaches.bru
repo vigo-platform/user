@@ -1,0 +1,58 @@
+meta {
+  name: List public coaches
+  type: http
+  seq: 16
+}
+
+get {
+  url: {{base_url}}/api/v1/coaches?page=0&size=20
+  body: none
+  auth: none
+}
+
+tests {
+  test("Returns a paginated list of coaches", function () {
+    expect(res.getStatus()).to.equal(200);
+    expect(res.getBody().data.content).to.be.an("array");
+  });
+}
+
+docs {
+  Lists approved coaches with active COACH accounts, newest first. No token is required.
+  The page index starts at 0. Page size can be 1 to 100.
+
+  Example response (HTTP 200, synthetic data):
+  ```json
+  {
+    "success": true,
+    "code": "SUCCESS",
+    "message": "Operation successful",
+    "message_fa": "عملیات موفق بود",
+    "data": {
+      "page": 0,
+      "size": 20,
+      "total_elements": 1,
+      "total_pages": 1,
+      "content": [
+        {
+          "coach_id": "22222222-2222-4222-8222-222222222222",
+          "display_name": "Synthetic Coach",
+          "headline": "Strength coach",
+          "bio": "A synthetic coaching biography for API testing only.",
+          "specialties": ["strength"],
+          "experience_years": 3,
+          "certifications": [],
+          "instagram_handle": null,
+          "result_image_urls": [],
+          "avatar_url": null,
+          "min_plan_price": null,
+          "active_athletes_count": 0,
+          "created_at": "2026-10-31T12:00:00Z",
+          "updated_at": "2026-10-31T12:00:00Z"
+        }
+      ]
+    },
+    "timestamp": "2026-10-31T12:00:00Z"
+  }
+  ```
+}

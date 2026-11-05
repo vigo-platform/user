@@ -14,7 +14,7 @@ Java 21, Spring Boot **4.1.2**, Maven wrapper 3.9.16 copied from API Gateway. Gr
 | SCRUM-45 — Transactional outbox/Kafka user.events | OutboxWriter/OutboxRelay; aggregate sequences, stable IDs, head-of-line leasing/fencing, broker ACK before mark | rollback, retry/reclaim, concurrent worker, real Kafka IT |
 | SCRUM-46 — Unit/integration/security review | `src/test/`, explicit integration profile; security decisions below | exact commands/results below; live infra limitations remain |
 
-**No public registration or auth endpoint.** No login, password policy/hashing/verification, OTP, token issuance/refresh, plans, relations, marketplace coach listing, media, or internal REST APIs. Password change/reset authorization belongs to Auth; User stores the complete encoded hash unchanged. Credential values are never part of REST DTOs, event payloads or application logging. Unknown request fields are rejected, including role/status/email/phone in profile updates.
+**No public registration or auth endpoint.** No login, password policy/hashing/verification, OTP, token issuance/refresh, plans, relations, media, or internal REST APIs. Password change/reset authorization belongs to Auth; User stores the complete encoded hash unchanged. Credential values are never part of REST DTOs, event payloads or application logging. Unknown request fields are rejected, including role/status/email/phone in profile updates.
 
 ### Supported HTTP operations
 
@@ -22,6 +22,7 @@ Java 21, Spring Boot **4.1.2**, Maven wrapper 3.9.16 copied from API Gateway. Gr
 - `GET /api/v1/users`, `GET /api/v1/users/{user_id}`, `PATCH /api/v1/users/{user_id}/status` — ADMIN.
 - `POST /api/v1/coaches/me/profile` — ATHLETE only, creates PENDING.
 - `GET`, `PUT /api/v1/coaches/me` — applicant ATHLETE or COACH.
+- `GET /api/v1/coaches?page=0&size=20` — public list of approved coaches with active `COACH` accounts, newest first. `page` starts at 0 and `size` accepts 1–100. The response contains `data.content`, `data.page`, `data.size`, `data.total_elements` and `data.total_pages`.
 - `GET /api/v1/coaches/{coach_id}` — anonymous, APPROVED + ACTIVE + authoritative COACH only. Never returns review status/rejection reason.
 - `GET /api/v1/admin/coaches`, `GET /api/v1/admin/coaches/{coach_id}`, `POST /api/v1/admin/coaches/{coach_id}/approve`, `POST .../reject` — ADMIN.
 - Actuator runs on a separate management server. `MANAGEMENT_PORT` defaults to **8082** and `MANAGEMENT_ADDRESS` defaults to `127.0.0.1`. Compose binds the management server to `0.0.0.0` inside the container so Prometheus on the shared network can scrape `user:8082/actuator/prometheus`. Health shows the aggregate status. Readiness checks the readiness state, database, and gRPC server. Liveness checks the liveness state. Docker checks `/actuator/health` on the configured management port. The `logging: "true"` label enables the shared Vector collector.

@@ -30,6 +30,7 @@ class PersistenceKafkaIT {
  @Container static KafkaContainer kafka=new KafkaContainer("apache/kafka:3.9.1");
  @DynamicPropertySource static void properties(DynamicPropertyRegistry p){p.add("spring.datasource.url",postgres::getJdbcUrl);p.add("spring.datasource.username",postgres::getUsername);p.add("spring.datasource.password",postgres::getPassword);p.add("spring.kafka.bootstrap-servers",kafka::getBootstrapServers);}
  @Autowired CredentialService credentials;@Autowired UserRepository users;@Autowired JdbcTemplate jdbc;@Autowired PlatformTransactionManager manager;@Autowired KafkaTemplate<String,String> producer;@Autowired OutboxWriter writer;
+ @Autowired ProfileService profiles;
  @Test @Order(5) void retryHeadBlocksSuccessorAndExpiredLeaseReclaimsStableEvents(){
   var created=credentials.create(request("ordered@example.test"));UUID id=users.findById(created.getUserId()).orElseThrow().publicId;
   new TransactionTemplate(manager).executeWithoutResult(s->{var u=users.lock(id).orElseThrow();writer.emit(u,"UserStatusChanged",Map.of("user_id",id,"old_status","ACTIVE","new_status","SUSPENDED"));});
@@ -65,6 +66,32 @@ class PersistenceKafkaIT {
   new OutboxRelay(jdbc,producer,manager,new SimpleMeterRegistry()).poll();
  }
  CreateUserRequest request(String email){return CreateUserRequest.newBuilder().setEmail(email).setFirstName("Synthetic").setLastName("User").setPasswordHash("synthetic-unchanged-hash").build();}
+ @Test @Order(7) void publicCoachListFiltersBeforePagingAndCounting(){
+  seedCoach("suspended",Role.COACH,AccountStatus.SUSPENDED,CoachStatus.APPROVED);
+  seedCoach("athlete",Role.ATHLETE,AccountStatus.ACTIVE,CoachStatus.APPROVED);
+  seedCoach("pending",Role.COACH,AccountStatus.ACTIVE,CoachStatus.PENDING);
+  UUID first=seedCoach("first",Role.COACH,AccountStatus.ACTIVE,CoachStatus.APPROVED);
+  UUID second=seedCoach("second",Role.COACH,AccountStatus.ACTIVE,CoachStatus.APPROVED);
+
+  var page=profiles.listPublicCoaches(0,1);
+  assertThat(page.total_elements()).isEqualTo(2);
+  assertThat(page.total_pages()).isEqualTo(2);
+  assertThat(page.content()).singleElement().satisfies(coach->assertThat(coach)
+   .containsEntry("coach_id",first).doesNotContainKeys("status","rejection_reason","email","phone"));
+  assertThat(profiles.listPublicCoaches(1,1).content()).extracting(coach->coach.get("coach_id")).containsExactly(second);
+  assertThat(profiles.listPublicCoaches(2,1).content()).isEmpty();
+ }
+ private UUID seedCoach(String name,Role role,AccountStatus accountStatus,CoachStatus coachStatus){
+  long id=credentials.create(request("coach-"+name+"@example.test")).getUserId();
+  jdbc.update("update users set role=?, status=? where id=?",role.name(),accountStatus.name(),id);
+  jdbc.update("""
+   insert into coach_profiles (user_id, display_name, bio, specialties, experience_years,
+    certifications, result_image_urls, status, created_at, updated_at)
+   values (?, ?, 'Synthetic biography', '["fitness"]', 3, '[]', '[]', ?,
+    timestamp '2025-01-01 00:00:00', timestamp '2025-01-01 00:00:00')
+   """,id,name,coachStatus.name());
+  return users.findById(id).orElseThrow().publicId;
+ }
  @Test @Order(1) void migrationAndConcurrentDatabaseUniqueness()throws Exception{
   try(var pool=Executors.newFixedThreadPool(2)){
    var barrier=new CyclicBarrier(2);Callable<Boolean> action=()->{barrier.await();try{credentials.create(request(" UNIQUE@EXAMPLE.TEST "));return true;}catch(org.springframework.dao.DataIntegrityViolationException e){return false;}};

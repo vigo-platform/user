@@ -68,6 +68,28 @@ class JwtSecurityTest {
   mvc.perform(get("/api/v1/coaches/me")).andExpect(status().isUnauthorized());
   mvc.perform(get("/api/v1/coaches/"+ID)).andExpect(status().isOk());
  }
+ @Test void coachListAcceptsAnonymousRequestsAndPaginates()throws Exception{
+  when(profiles.listPublicCoaches(0,20)).thenReturn(new Views.Paged<>(0,20,0,0,List.of()));
+  when(profiles.listPublicCoaches(1,5)).thenReturn(new Views.Paged<>(1,5,6,2,List.of(Map.of("coach_id",ID))));
+
+  mvc.perform(get("/api/v1/coaches"))
+   .andExpect(status().isOk()).andExpect(jsonPath("$.data.page").value(0))
+   .andExpect(jsonPath("$.data.size").value(20)).andExpect(jsonPath("$.data.content").isEmpty());
+  mvc.perform(get("/api/v1/coaches").param("page","1").param("size","5"))
+   .andExpect(status().isOk()).andExpect(jsonPath("$.data.page").value(1))
+   .andExpect(jsonPath("$.data.size").value(5)).andExpect(jsonPath("$.data.total_elements").value(6))
+   .andExpect(jsonPath("$.data.total_pages").value(2)).andExpect(jsonPath("$.data.content[0].coach_id").value(ID.toString()));
+  mvc.perform(post("/api/v1/coaches")).andExpect(status().isUnauthorized());
+ }
+ @Test void coachListRejectsInvalidPagination()throws Exception{
+  for(var invalid:Map.of("page",List.of("-1","abc"),"size",List.of("0","101","abc")).entrySet()){
+   for(String value:invalid.getValue()){
+    mvc.perform(get("/api/v1/coaches").param(invalid.getKey(),value))
+     .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+   }
+  }
+  verifyNoInteractions(profiles);
+ }
  @Test void badSignaturesClaimsAndExpiredAreRejected()throws Exception{
   var bad=List.of(token(OTHER,"ATHLETE",ID.toString(),ISSUER,"vigo-api",Instant.now().plusSeconds(300)),token(KEY,"ROOT",ID.toString(),ISSUER,"vigo-api",Instant.now().plusSeconds(300)),token(KEY,"ATHLETE","12",ISSUER,"vigo-api",Instant.now().plusSeconds(300)),token(KEY,"ATHLETE",ID.toString(),"wrong","vigo-api",Instant.now().plusSeconds(300)),token(KEY,"ATHLETE",ID.toString(),ISSUER,"other",Instant.now().plusSeconds(300)),token(KEY,"ATHLETE",ID.toString(),ISSUER,"vigo-api",Instant.now().minusSeconds(3600)));
   for(String value:bad)mvc.perform(get("/api/v1/users/me").header("Authorization","Bearer "+value)).andExpect(status().isUnauthorized()).andExpect(jsonPath("$.code").value("UNAUTHORIZED"));

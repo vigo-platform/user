@@ -50,6 +50,14 @@ public class ProfileService {
  }
  public Map<String,Object> own(UUID id){return Views.coach(coach(id),true,json);}
  public Map<String,Object> publicCoach(UUID id){var c=coach(id);if(c.status!=CoachStatus.APPROVED||c.user.status!=AccountStatus.ACTIVE||c.user.role!=Role.COACH)throw ApiException.notFound();return Views.coach(c,false,json);}
+
+ @Transactional(readOnly=true)
+ public Views.Paged<Map<String,Object>> listPublicCoaches(int page,int size){
+  var pageable=PageRequest.of(page,size,Sort.by("createdAt").descending().and(Sort.by("userId")));
+  var result=coaches.findAllByStatusAndUser_StatusAndUser_Role(CoachStatus.APPROVED,AccountStatus.ACTIVE,Role.COACH,pageable);
+  return Views.page(result,c->Views.coach(c,false,json));
+ }
+
  public Map<String,Object> adminCoach(UUID id){return Views.coach(coach(id),true,json);}
  public Map<String,Object> updateCoach(UUID id,Requests.Coach r){
   var u=activeLocked(id);if(u.role!=Role.ATHLETE&&u.role!=Role.COACH)throw ApiException.forbidden();
