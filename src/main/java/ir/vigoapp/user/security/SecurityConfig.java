@@ -1,6 +1,9 @@
 package ir.vigoapp.user.security;
 import ir.vigoapp.user.api.Envelope;
 import ir.vigoapp.user.domain.*;
+import jakarta.servlet.http.HttpServletRequest;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.beans.factory.annotation.Value;
@@ -17,6 +20,7 @@ import java.util.*;
 import static org.springframework.http.HttpMethod.*;
 @Configuration
 public class SecurityConfig {
+ private static final Logger log=LoggerFactory.getLogger(SecurityConfig.class);
  @Bean JwtDecoder jwtDecoder(@Value("${app.jwt.jwks-uri}") String jwks,@Value("${app.jwt.issuer}") String issuer,@Value("${app.jwt.audience}") String audience) {
   if(jwks.isBlank()||issuer.isBlank()||audience.isBlank())throw new IllegalStateException("JWT trust configuration required");
   NimbusJwtDecoder decoder=NimbusJwtDecoder.withJwkSetUri(jwks).jwsAlgorithm(SignatureAlgorithm.RS256).validateType(false).build();
@@ -70,8 +74,8 @@ public class SecurityConfig {
     .requestMatchers(GET,"/actuator/health/liveness","/actuator/health/readiness").access((authentication,context)->new org.springframework.security.authorization.AuthorizationDecision(context.getRequest().getLocalPort()==9081))
     .requestMatchers(GET,"/actuator/prometheus").access((authentication,context)->new org.springframework.security.authorization.AuthorizationDecision(context.getRequest().getLocalPort()==9081))
     .anyRequest().denyAll())
-   .exceptionHandling(e->e.authenticationEntryPoint((r,s,x)->write(json,s,401)).accessDeniedHandler((r,s,x)->write(json,s,403)))
-   .oauth2ResourceServer(o->o.authenticationEntryPoint((r,s,x)->write(json,s,401)).jwt(j->j.jwtAuthenticationConverter(jwt->{
+   .exceptionHandling(e->e.authenticationEntryPoint((r,s,x)->write(json,r,s,401,x)).accessDeniedHandler((r,s,x)->write(json,r,s,403,x)))
+   .oauth2ResourceServer(o->o.authenticationEntryPoint((r,s,x)->write(json,r,s,401,x)).jwt(j->j.jwtAuthenticationConverter(jwt->{
     String subject=jwt.getSubject();
     var result=isAuthAccessToken(jwt)?users.findById(Long.parseLong(subject)):users.findByPublicId(UUID.fromString(subject));
     var account=result.orElseThrow(()->new org.springframework.security.oauth2.core.OAuth2AuthenticationException("invalid_token"));
@@ -82,7 +86,13 @@ public class SecurityConfig {
    })));
   return http.build();
  }
- private static void write(ObjectMapper json,jakarta.servlet.http.HttpServletResponse response,int code) throws java.io.IOException {
+ private static void write(ObjectMapper json,HttpServletRequest request,jakarta.servlet.http.HttpServletResponse response,int code,Exception failure) throws java.io.IOException {
+  var event=log.atWarn().addKeyValue("event",code==401?"authentication_required":"access_denied").addKeyValue("result","REJECTED")
+   .addKeyValue("status",code).addKeyValue("reason",failure.getClass().getSimpleName()).addKeyValue("http_method",request.getMethod())
+   .addKeyValue("path",request.getRequestURI()).addKeyValue("ip_address",request.getRemoteAddr());
+  var caller=request.getUserPrincipal();
+  if(caller!=null)event.addKeyValue("actor_public_id",caller.getName());
+  event.log(code==401?"User API request requires authentication.":"User API request access denied.");
   response.setStatus(code);response.setContentType("application/json");
   if(code==401)response.setHeader("WWW-Authenticate","Bearer");
   json.writeValue(response.getOutputStream(),Envelope.error(code==401?"UNAUTHORIZED":"FORBIDDEN",code==401?"Authentication required":"Access denied",code==401?"احراز هویت لازم است":"دسترسی مجاز نیست",null));

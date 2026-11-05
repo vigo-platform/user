@@ -35,7 +35,7 @@ class GrpcEndpointTest {
   when(service.create(any())).thenThrow(new org.springframework.dao.DataIntegrityViolationException("secret SQL"));assertThatThrownBy(()->client.createUser(CreateUserRequest.getDefaultInstance())).satisfies(e->assertThat(Status.fromThrowable(e).getCode()).isEqualTo(Status.Code.ALREADY_EXISTS));
  }
  @Test void transportWithoutServiceIdentityCannotCallEvenNonCredentialRpc()throws Exception{
-  String name=InProcessServerBuilder.generateName();var secured=InProcessServerBuilder.forName(name).directExecutor().addService(ServerInterceptors.intercept(new UserGrpcEndpoint(service),new AuthServiceInterceptor("spiffe://vigo.local/service/auth",false))).build().start();
+  String name=InProcessServerBuilder.generateName();var secured=InProcessServerBuilder.forName(name).directExecutor().addService(ServerInterceptors.intercept(new UserGrpcEndpoint(service),new AuthServiceInterceptor("spiffe://vigo.local/service/auth",false,""))).build().start();
   var connection=InProcessChannelBuilder.forName(name).directExecutor().build();
   try{assertThatThrownBy(()->UserServiceGrpc.newBlockingStub(connection).checkEmailExists(CheckEmailExistsRequest.getDefaultInstance())).satisfies(e->assertThat(Status.fromThrowable(e).getCode()).isEqualTo(Status.Code.PERMISSION_DENIED));}
   finally{connection.shutdownNow().awaitTermination(5,java.util.concurrent.TimeUnit.SECONDS);secured.shutdownNow().awaitTermination(5,java.util.concurrent.TimeUnit.SECONDS);}

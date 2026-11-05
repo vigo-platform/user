@@ -38,6 +38,7 @@ app:
     port: ${GRPC_PORT:50051}
     bind-address: ${GRPC_BIND_ADDRESS:127.0.0.1}
     dev-plaintext-enabled: ${GRPC_DEV_PLAINTEXT_ENABLED:false}
+    dev-auth-user-agent: ${GRPC_DEV_AUTH_USER_AGENT:}
     certificate: ${GRPC_TLS_CERTIFICATE:}
     private-key: ${GRPC_TLS_PRIVATE_KEY:}
     trust-certificate: ${GRPC_TLS_TRUST_CERTIFICATE:}
@@ -46,6 +47,13 @@ app:
     enabled: ${OUTBOX_ENABLED:true}
     poll-ms: ${OUTBOX_POLL_MS:1000}
 management:
+  tracing:
+    sampling:
+      probability: 1.0
+  otlp:
+    metrics:
+      export:
+        enabled: false
   server:
     port: 9081
     address: ${MANAGEMENT_ADDRESS:127.0.0.1}
@@ -64,3 +72,7 @@ management:
           include: readinessState,db,grpc
         liveness:
           include: livenessState
+
+logging:
+  pattern:
+    correlation: "%correlationId"

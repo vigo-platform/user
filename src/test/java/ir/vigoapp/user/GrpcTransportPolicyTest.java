@@ -8,11 +8,15 @@ import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.mock.env.MockEnvironment;
 import org.springframework.test.util.ReflectionTestUtils;
 import io.grpc.*;
+import io.micrometer.observation.ObservationRegistry;
 import io.grpc.netty.shaded.io.grpc.netty.NettyChannelBuilder;
 import io.grpc.reflection.v1alpha.ServerReflectionGrpc;
 import io.grpc.reflection.v1alpha.ServerReflectionRequest;
 import io.grpc.reflection.v1alpha.ServerReflectionResponse;
 import io.grpc.stub.StreamObserver;
+import ir.vigoapp.contracts.user.v1.GetUserByIdRequest;
+import ir.vigoapp.contracts.user.v1.UserAuthInfo;
+import ir.vigoapp.contracts.user.v1.UserServiceGrpc;
 import javax.net.ssl.SSLSession;
 import java.security.cert.X509Certificate;
 import java.util.*;
@@ -26,6 +30,7 @@ class GrpcTransportPolicyTest {
    .withConfiguration(AutoConfigurations.of(HealthContributorRegistryAutoConfiguration.class))
    .withUserConfiguration(GrpcServerLifecycle.class)
    .withBean(UserGrpcEndpoint.class,()->new UserGrpcEndpoint(mock(ir.vigoapp.user.service.CredentialService.class)))
+   .withBean(ObservationRegistry.class,()->ObservationRegistry.NOOP)
    .withInitializer(context->context.getEnvironment().setActiveProfiles("dev"))
    .withPropertyValues("app.grpc.dev-plaintext-enabled=true","app.grpc.port=0")
    .run(context->{
@@ -35,24 +40,24 @@ class GrpcTransportPolicyTest {
  }
  @Test void plaintextRequiresDevProfileAndExplicitFlag(){
   var env=new MockEnvironment().withProperty("app.grpc.dev-plaintext-enabled","true");
-  var lifecycle=new GrpcServerLifecycle(new UserGrpcEndpoint(mock(ir.vigoapp.user.service.CredentialService.class)),env);
+  var lifecycle=new GrpcServerLifecycle(new UserGrpcEndpoint(mock(ir.vigoapp.user.service.CredentialService.class)),env,ObservationRegistry.NOOP);
   assertThatThrownBy(lifecycle::start).isInstanceOf(IllegalStateException.class).hasMessageContaining("dev profile");assertThat(lifecycle.isRunning()).isFalse();
  }
  @Test void defaultMissingTlsFailsClosedAndStopIsIdempotent(){
-  var lifecycle=new GrpcServerLifecycle(new UserGrpcEndpoint(mock(ir.vigoapp.user.service.CredentialService.class)),new MockEnvironment());
+  var lifecycle=new GrpcServerLifecycle(new UserGrpcEndpoint(mock(ir.vigoapp.user.service.CredentialService.class)),new MockEnvironment(),ObservationRegistry.NOOP);
   assertThatThrownBy(lifecycle::start).isInstanceOf(IllegalStateException.class).hasMessageContaining("Secure gRPC startup failed");
   lifecycle.stop();lifecycle.stop();assertThat(lifecycle.isRunning()).isFalse();
  }
  @Test void developmentLifecycleStartsEphemeralLoopbackAndCleansUp(){
   var env=new MockEnvironment().withProperty("app.grpc.dev-plaintext-enabled","true").withProperty("app.grpc.port","0").withProperty("app.grpc.auth-service-identity","spiffe://vigo.local/service/auth");env.setActiveProfiles("dev");
-  var lifecycle=new GrpcServerLifecycle(new UserGrpcEndpoint(mock(ir.vigoapp.user.service.CredentialService.class)),env);
+  var lifecycle=new GrpcServerLifecycle(new UserGrpcEndpoint(mock(ir.vigoapp.user.service.CredentialService.class)),env,ObservationRegistry.NOOP);
   try{lifecycle.start();assertThat(lifecycle.isRunning()).isTrue();lifecycle.start();}finally{lifecycle.stop();}
   assertThat(lifecycle.isRunning()).isFalse();
  }
  @Test void developmentLoopbackListsUserServiceThroughBrunoReflectionProtocol()throws Exception{
   var env=new MockEnvironment().withProperty("app.grpc.dev-plaintext-enabled","true").withProperty("app.grpc.port","0");
   env.setActiveProfiles("dev");
-  var lifecycle=new GrpcServerLifecycle(new UserGrpcEndpoint(mock(ir.vigoapp.user.service.CredentialService.class)),env);
+  var lifecycle=new GrpcServerLifecycle(new UserGrpcEndpoint(mock(ir.vigoapp.user.service.CredentialService.class)),env,ObservationRegistry.NOOP);
   lifecycle.start();
   try{
    var server=(Server)ReflectionTestUtils.getField(lifecycle,"server");
@@ -73,10 +78,12 @@ class GrpcTransportPolicyTest {
   }finally{lifecycle.stop();}
  }
  @SuppressWarnings("unchecked") @Test void onlyExactAuthUriSanPassesServiceIdentity()throws Exception{
-  ServerCall<Object,Object> call=mock(ServerCall.class);ServerCallHandler<Object,Object> next=mock(ServerCallHandler.class);SSLSession session=mock(SSLSession.class);X509Certificate cert=mock(X509Certificate.class);
+  ServerCall<GetUserByIdRequest,UserAuthInfo> call=mock(ServerCall.class);ServerCallHandler<GetUserByIdRequest,UserAuthInfo> next=mock(ServerCallHandler.class);SSLSession session=mock(SSLSession.class);X509Certificate cert=mock(X509Certificate.class);
+  when(call.getMethodDescriptor()).thenReturn(UserServiceGrpc.getGetUserByIdMethod());
+  when(next.startCall(any(),any())).thenReturn(new ServerCall.Listener<>(){});
   when(call.getAttributes()).thenReturn(Attributes.newBuilder().set(Grpc.TRANSPORT_ATTR_SSL_SESSION,session).build());when(session.getPeerCertificates()).thenReturn(new java.security.cert.Certificate[]{cert});
   when(cert.getSubjectAlternativeNames()).thenReturn(List.of(List.of(6,"spiffe://vigo.local/service/other"),List.of(2,"auth")));
-  var interceptor=new AuthServiceInterceptor("spiffe://vigo.local/service/auth",false);
+  var interceptor=new AuthServiceInterceptor("spiffe://vigo.local/service/auth",false,"");
   interceptor.interceptCall(call,new Metadata(),next);verifyNoInteractions(next);verify(call).close(argThat(s->s.getCode()==Status.Code.PERMISSION_DENIED),any());
   when(cert.getSubjectAlternativeNames()).thenReturn(List.of(List.of(6,"spiffe://vigo.local/service/auth")));
   interceptor.interceptCall(call,new Metadata(),next);verify(next).startCall(eq(call),any());verify(cert,times(2)).checkValidity();

@@ -17,6 +17,8 @@ COPY src/ src/
 RUN chmod +x mvnw && ./mvnw -B -ntp -DskipTests package
 
 FROM eclipse-temurin:21-jre-alpine AS runtime
+LABEL logging="true"
+ENV LOGGING_VECTOR_MODE=docker
 RUN apk add --no-cache curl && addgroup -S vigo && adduser -S -G vigo vigo
 WORKDIR /app
 COPY --from=builder --chown=vigo:vigo /build/target/user-0.0.1-SNAPSHOT.jar /app/app.jar
