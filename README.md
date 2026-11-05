@@ -55,13 +55,27 @@ On Windows, use `mvnw.cmd` from this directory. Unit and security tests use synt
 
 With JDK 21, `bash ./mvnw -B -ntp -Pintegration clean verify` built the JAR and passed 27 unit and security tests. The six PostgreSQL and Kafka integration tests were skipped because Docker was unavailable.
 
+## Docker build and publishing
+
+The Docker build downloads the published gRPC contract from GitHub Packages. Configure the `github-vigo-contracts` server in your Maven settings and pass the file as a BuildKit secret.
+
+```sh
+docker build --secret id=maven_settings,src="$HOME/.m2/settings.xml" -t logtaha/vigo-user-service .
+```
+
+`docker compose build` uses `$HOME/.m2/settings.xml` by default. Set `MAVEN_SETTINGS_FILE` to use another settings file.
+
+The `Docker Build & Push` workflow publishes to `logtaha/vigo-user-service` on Docker Hub. The Git tag `build-and-push` or a manual run with an empty tag publishes `sha-<short-sha>`. The Git tag `build-and-push-<version>` or a manual run with a tag publishes both that tag and `latest`.
+
+Configure `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN` and `MAVEN_TOKEN` as GitHub Actions secrets. Set `MAVEN_USERNAME` as a secret or variable. Use a classic GitHub personal access token with `read:packages` for `MAVEN_TOKEN` and give its owner access to the contracts package.
+
 ## Configuration and local run
 
 Spring does **not** automatically import `.env`. Copy `.env.example` to untracked `.env` and export values into the process/IDE, or let Compose pass them. Do not commit credentials, tokens or keys. Required: SPRING_DATASOURCE_URL/USERNAME/PASSWORD, KAFKA_BOOTSTRAP_SERVERS, AUTH_JWKS_URI, JWT_ISSUER, JWT_AUDIENCE. No defaults or validation bypass for issuer/audience/JWKS. Explicit local sample issuer/audience are in .env.example; configure the actual Auth issuer to match. Host process JWKS commonly uses `http://localhost:8080/.well-known/jwks.json`; Compose uses `http://auth:8080/...` and must match actual Auth listen configuration.
 
 - Provision database **vigo_user_service** before startup; Flyway creates tables, Hibernate validates, open-in-view off, timestamps timestamptz. Dev may share the shared PostgreSQL credentials. Production should have a dedicated service login/schema owner and a separate migration identity, least-privilege SQL grants, encrypted connections/backups; do not share superuser credentials.
 - Shared Kafka already provisioned by the parent project: host `localhost:19092`, containers `kafka:9092`, topic `user.events`. Compose joins external configurable `${APP_NETWORK_NAME:-vigo-app}`; it does not create the network or shared DB/Kafka.
-- Image build is multi-stage from source. The builder stage needs the named build context `contracts` (sibling `api-contracts`); it copies only `grpc/`, `scripts/grpc_release.py`, `build-support/grpc-pom.xml`, `mvnw` and `.mvn/wrapper/maven-wrapper.properties` (no `.git`, `target`, tokens), runs `grpc_release.py prepare --contract users --version 3.1.0`, installs the contract into the builder's Maven repository, then packages this service. Compose sets `additional_contexts: contracts: ../api-contracts`; standalone: `docker build --build-context contracts=../api-contracts -t vigo-user .` (BuildKit required). `.dockerignore` sends only wrapper, pom and src. Run `docker compose build` / `docker compose up -d` **only when intentionally deploying**; this Dockerfile was not built here (no Docker engine). The `prepare` CLI arguments are taken from the contract script's documented contract/version inputs; verify against that script if its CLI changes. Image runs nonroot, read-only filesystem + /tmp tmpfs, no capabilities, healthcheck uses installed curl. Port mappings bind loopback only (8081/50051); the management port is not published.
+- The image runs as the nonroot `vigo` user and checks health on the management port. Compose uses a read-only filesystem with a `/tmp` tmpfs, drops all capabilities, and publishes the HTTP and gRPC ports on loopback.
 - Host process: export variables, set explicitly selected gRPC mode below, then `./mvnw spring-boot:run`. No app/services were started for this implementation beyond synthetic tests.
 - Host logging uses the Auth terminal format and sends JSON to Vector at `localhost:5044`. Set `LOGGING_VECTOR_DESTINATION` to override the address or set it to an empty value for console-only output. The Docker image writes JSON to stdout for Vector's `logging=true` collection. Vector forwards both sources to Elasticsearch.
 

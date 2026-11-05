@@ -2,8 +2,8 @@ services:
   user:
     build:
       context: .
-      additional_contexts:
-        contracts: ../api-contracts
+      secrets:
+        - maven_settings
     labels:
       logging: "true"
     restart: unless-stopped
@@ -36,6 +36,9 @@ services:
     tmpfs: [/tmp]
     security_opt: [no-new-privileges:true]
     cap_drop: [ALL]
+secrets:
+  maven_settings:
+    file: ${MAVEN_SETTINGS_FILE:-${HOME}/.m2/settings.xml}
 networks:
   vigo-app:
     external: true
