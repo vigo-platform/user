@@ -12,10 +12,12 @@ public final class Views {
  // REST contract exposes only a verified phone; Iranian numbers use its local 09 format.
  static String restPhone(UserAccount u) { return u.phoneVerified?u.phone:null; }
  public static Map<String,Object> coach(CoachProfile c,boolean privateView,ObjectMapper json) {
+  // A lazy proxy's public fields are not the persisted entity fields, even after initialization.
+  var user=org.hibernate.Hibernate.unproxy(c.user,UserAccount.class);
   Map<String,Object> v=new LinkedHashMap<>();
-  v.put("coach_id",c.user.publicId);v.put("display_name",c.displayName);v.put("headline",c.headline);v.put("bio",c.bio);
+  v.put("coach_id",user.publicId);v.put("display_name",c.displayName);v.put("headline",c.headline);v.put("bio",c.bio);
   v.put("specialties",json.readTree(c.specialties));v.put("experience_years",c.experienceYears);v.put("certifications",json.readTree(c.certifications));
-  v.put("instagram_handle",c.instagramHandle);v.put("result_image_urls",json.readTree(c.resultImageUrls));v.put("avatar_url",c.user.avatarUrl);
+  v.put("instagram_handle",c.instagramHandle);v.put("result_image_urls",json.readTree(c.resultImageUrls));v.put("avatar_url",user.avatarUrl);
   if(privateView){v.put("status",c.status);v.put("rejection_reason",c.rejectionReason);}
   v.put("min_plan_price",null);v.put("active_athletes_count",0);v.put("created_at",c.createdAt);v.put("updated_at",c.updatedAt);return v;
  }

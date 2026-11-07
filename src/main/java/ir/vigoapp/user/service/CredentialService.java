@@ -47,6 +47,7 @@ public class CredentialService {
   var b=UserAuthInfo.newBuilder().setUserId(u.id).addRoles(u.role.name())
    .setStatus(u.status==AccountStatus.ACTIVE?UserStatus.USER_STATUS_ACTIVE:UserStatus.USER_STATUS_SUSPENDED)
    .setEmailVerified(u.email!=null&&u.emailVerified).setPhoneVerified(u.phone!=null&&u.phoneVerified)
+   .setTwoFactorEnabled(u.twoFactorAuthentication)
    .setCredentialVersion(u.credentialVersion).setCredentialsExpired(expired(u.credentialsChangedAt,Instant.now(),maxAge));
   if(u.email!=null)b.setEmail(u.email);if(u.phone!=null)b.setPhone(u.phone);return b.build();
  }

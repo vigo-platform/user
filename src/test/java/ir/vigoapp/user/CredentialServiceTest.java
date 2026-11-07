@@ -27,6 +27,7 @@ class CredentialServiceTest {
   assertThat(response.getUserId()).isEqualTo(4);
   assertThat(response.getRolesList()).containsExactly("ATHLETE");assertThat(response.getStatus()).isEqualTo(UserStatus.USER_STATUS_ACTIVE);
   assertThat(response.getCredentialVersion()).isEqualTo(1);assertThat(response.getCredentialsExpired()).isFalse();assertThat(response.getEmailVerified()).isTrue();assertThat(response.getPhoneVerified()).isFalse();
+  assertThat(response.getTwoFactorEnabled()).isFalse();
   ArgumentCaptor<UserAccount> capture=ArgumentCaptor.forClass(UserAccount.class);verify(users).saveAndFlush(capture.capture());
   assertThat(capture.getValue().passwordHash()).isEqualTo(encoded);assertThat(capture.getValue().toString()).doesNotContain(encoded);
   assertThat(capture.getValue().publicId).isNotNull();
@@ -47,6 +48,19 @@ class CredentialServiceTest {
   service=new CredentialService(users,events,Duration.ofDays(90));when(users.findById(5L)).thenReturn(Optional.of(u));when(users.findByEmail(u.email)).thenReturn(Optional.of(u));
   var login=service.loginByEmail("A@example.com");assertThat(login.getPasswordHash()).isEqualTo("unchanged");assertThat(login.getUser().getUserId()).isEqualTo(u.id);
   assertThat(service.byId(5).getCredentialsExpired()).isTrue();assertThat(service.loginById(5).getUser().getCredentialsExpired()).isTrue();
+ }
+ @org.junit.jupiter.params.ParameterizedTest
+ @org.junit.jupiter.params.provider.ValueSource(booleans={false,true})
+ void everyAccountLookupReturnsStoredTwoFactorSetting(boolean enabled){
+  var u=new UserAccount();u.id=9L;u.email="twofactor@example.com";u.phone="+989121234567";u.replacePassword("encoded");
+  u.twoFactorAuthentication=enabled;
+  when(users.findById(u.id)).thenReturn(Optional.of(u));
+  when(users.findByEmail(u.email)).thenReturn(Optional.of(u));
+  when(users.findByPhone(u.phone)).thenReturn(Optional.of(u));
+  assertThat(service.byId(u.id).getTwoFactorEnabled()).isEqualTo(enabled);
+  assertThat(service.loginById(u.id).getUser().getTwoFactorEnabled()).isEqualTo(enabled);
+  assertThat(service.loginByEmail(u.email).getUser().getTwoFactorEnabled()).isEqualTo(enabled);
+  assertThat(service.loginByPhone(u.phone).getUser().getTwoFactorEnabled()).isEqualTo(enabled);
  }
  @Test void atomicCasReportsAbortedOrNotFound(){
   var request=ChangeUserPasswordRequest.newBuilder().setUserId(2).setExpectedCredentialVersion(4).setNewPasswordHash("encoded").build();
