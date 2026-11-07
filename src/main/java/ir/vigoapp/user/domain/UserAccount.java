@@ -19,6 +19,7 @@ public class UserAccount {
  @Enumerated(EnumType.STRING) @Column(nullable=false) public AccountStatus status=AccountStatus.ACTIVE;
  @Column(name="email_verified",nullable=false) public boolean emailVerified;
  @Column(name="phone_verified",nullable=false) public boolean phoneVerified;
+ @Column(name="two_factor_authentication",nullable=false) public boolean twoFactorAuthentication;
  @Column(name="credential_version",nullable=false) public long credentialVersion=1;
  @Column(name="credentials_changed_at",nullable=false) public Instant credentialsChangedAt=Instant.now();
  @Column(name="aggregate_version",nullable=false) public long aggregateVersion;

@@ -49,7 +49,11 @@ public class ProfileService {
   var c=new CoachProfile();c.user=u;fill(c,r);coaches.saveAndFlush(c);return Views.coach(c,true,json);
  }
  public Map<String,Object> own(UUID id){return Views.coach(coach(id),true,json);}
- public Map<String,Object> publicCoach(UUID id){var c=coach(id);if(c.status!=CoachStatus.APPROVED||c.user.status!=AccountStatus.ACTIVE||c.user.role!=Role.COACH)throw ApiException.notFound();return Views.coach(c,false,json);}
+ public Map<String,Object> publicCoach(UUID id){
+  var c=coach(id);var u=org.hibernate.Hibernate.unproxy(c.user,UserAccount.class);
+  if(c.status!=CoachStatus.APPROVED||u.status!=AccountStatus.ACTIVE||u.role!=Role.COACH)throw ApiException.notFound();
+  return Views.coach(c,false,json);
+ }
 
  @Transactional(readOnly=true)
  public Views.Paged<Map<String,Object>> listPublicCoaches(int page,int size){
@@ -68,7 +72,7 @@ public class ProfileService {
   return Views.page(coaches.findAll(spec,PageRequest.of(page,size,Sort.by("createdAt").descending().and(Sort.by("userId")))),c->Views.coach(c,true,json));
  }
  public Map<String,Object> decide(UUID actor,UUID id,boolean approve,String reason){
-  var u=locked(id);var c=coach(id);
+  var u=org.hibernate.Hibernate.unproxy(locked(id),UserAccount.class);var c=coach(id);
   if(c.status!=CoachStatus.PENDING)throw ApiException.conflict("INVALID_STATE");
   if(u.status!=AccountStatus.ACTIVE||u.role!=Role.ATHLETE)throw ApiException.conflict("INVALID_STATE");
   c.status=approve?CoachStatus.APPROVED:CoachStatus.REJECTED;c.rejectionReason=approve?null:reason;c.updatedAt=Instant.now();

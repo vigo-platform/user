@@ -40,6 +40,36 @@ Read alongside sibling `api-contracts/rest/user.yaml`, `grpc/users.proto`, `even
 5. Credential version starts at 1. A single conditional UPDATE swaps hash/version/timestamp only for the expected version; a lost race is gRPC ABORTED, missing account NOT_FOUND. `CREDENTIALS_MAX_AGE` is ISO-8601 duration (`P90D`, for example), defaults **PT0S = disabled**; expired is explicitly computed in every UserAuthInfo response, independently of account status. No password content transformation is performed.
 6. REST exposes only ACTIVE/SUSPENDED account states; proto's pending/deactivated states are not created. Birth date/gender/avatar are profile fields; avatar/result-image references are validated opaque relative Storage URLs, not fetched or uploaded here.
 
+## Coach identifier round trips
+
+`coach_id` is always the persisted account `public_id` UUID, never the numeric
+coach-profile primary key or a value read from an uninitialized Hibernate proxy.
+The same ID returned by either coach list is accepted by coach detail/admin
+routes. Only PENDING applications can be approved/rejected: an already-approved
+public coach correctly returns `409 INVALID_STATE`, not a fabricated `404`.
+
+## Persistent two-factor enrollment
+
+Flyway `V2__persist_two_factor_authentication.sql` adds
+`users.two_factor_authentication BOOLEAN NOT NULL DEFAULT FALSE`. It upgrades the
+existing database without rewriting V1 or recreating accounts. Existing and new
+accounts remain non-enrolled (`false`) until an authorized enrollment process
+changes the persisted value; email/phone verification does not enable 2FA.
+
+Every account-bearing gRPC response maps this stored value to the published
+`UserAuthInfo.two_factor_enabled` field of `users-grpc-contract:3.1.0`, including
+login by email/phone/ID, GetUserById and CreateUser. There is no new REST enrollment
+endpoint, factor secret storage, OTP generation or Auth change in this fix. Only
+mark an account enrolled after the Auth-owned factor setup has completed; do not
+use ordinary profile updates to change this security setting.
+
+The `CoachLookupRegressionTest` and `TwoFactorPersistenceTest` suites run temporary
+real PostgreSQL using the test-only embedded-postgres dependency, so JPA identifier
+mapping and the V1→V2 upgrade can be exercised without Docker. They create and stop
+their own isolated database and do not contact the development/production database.
+The first run downloads platform-specific PostgreSQL test binaries. Existing Kafka
+Testcontainers tests still require an already-running Docker engine.
+
 ## Build and tests
 
 Prerequisites are JDK 21 (or newer targeting release 21) and Maven Central access. To download the published `users-grpc-contract:3.1.0`, configure GitHub Packages credentials under server ID `github-vigo-contracts` in `~/.m2/settings.xml`. A locally installed contract also works.
@@ -53,7 +83,12 @@ bash ./mvnw -B -ntp -Pintegration verify
 
 On Windows, use `mvnw.cmd` from this directory. Unit and security tests use synthetic local RSA keys and in-process gRPC. Testcontainers integration tests use PostgreSQL and Kafka through the integration Maven profile and are skipped when Docker is unavailable. Never start a Docker daemon as part of tests.
 
-With JDK 21, `bash ./mvnw -B -ntp -Pintegration clean verify` built the JAR and passed 27 unit and security tests. The six PostgreSQL and Kafka integration tests were skipped because Docker was unavailable.
+Release 1.0.3 verification: `bash ./mvnw -B -ntp -Pintegration verify` built the
+JAR and passed 47 tests with zero failures, errors or skips (local JDK 23 targeting
+Java 21). This includes real temporary PostgreSQL coach lookup/proxy regressions
+and the V1→V2 migration/2FA persistence test. The seven Docker-based PostgreSQL/Kafka
+integration tests were skipped because Docker was unavailable; they are not passing
+integration results. No deployed server was contacted or changed.
 
 ## Docker build and publishing
 

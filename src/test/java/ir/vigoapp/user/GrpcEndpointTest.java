@@ -28,6 +28,19 @@ class GrpcEndpointTest {
   assertThat(client.createUser(CreateUserRequest.newBuilder().setEmail("a@example.test").setFirstName("A").setLastName("B").setPasswordHash("synthetic-encoded").build()).getUser()).isEqualTo(user);
   assertThat(client.changeUserPassword(ChangeUserPasswordRequest.newBuilder().setUserId(7).setExpectedCredentialVersion(1).setNewPasswordHash("new-synthetic-encoded").build()).getCredentialVersion()).isEqualTo(2);
  }
+ @org.junit.jupiter.params.ParameterizedTest
+ @org.junit.jupiter.params.provider.ValueSource(booleans={false,true})
+ void twoFactorSettingSurvivesGrpcSerializationOnEveryAccountResponse(boolean enabled){
+  var account=user.toBuilder().setTwoFactorEnabled(enabled).build();
+  var login=UserLoginInfoResponse.newBuilder().setUser(account).setPasswordHash("synthetic-encoded").build();
+  when(service.loginByEmail("a@example.test")).thenReturn(login);when(service.loginByPhone("+989121234567")).thenReturn(login);
+  when(service.loginById(7)).thenReturn(login);when(service.byId(7)).thenReturn(account);when(service.create(any())).thenReturn(account);
+  assertThat(client.getUserLoginInfoByEmail(GetUserLoginInfoByEmailRequest.newBuilder().setEmail("a@example.test").build()).getUser().getTwoFactorEnabled()).isEqualTo(enabled);
+  assertThat(client.getUserLoginInfoByPhone(GetUserLoginInfoByPhoneRequest.newBuilder().setPhone("+989121234567").build()).getUser().getTwoFactorEnabled()).isEqualTo(enabled);
+  assertThat(client.getUserLoginInfoById(GetUserLoginInfoByIdRequest.newBuilder().setUserId(7).build()).getUser().getTwoFactorEnabled()).isEqualTo(enabled);
+  assertThat(client.getUserById(GetUserByIdRequest.newBuilder().setUserId(7).build()).getTwoFactorEnabled()).isEqualTo(enabled);
+  assertThat(client.createUser(CreateUserRequest.getDefaultInstance()).getUser().getTwoFactorEnabled()).isEqualTo(enabled);
+ }
  @Test void errorsHaveSafeDescriptionsAndCorrectCodes(){
   when(service.loginById(0)).thenThrow(new IllegalArgumentException("SECRET HASH SHOULD NOT LEAK"));
   assertThatThrownBy(()->client.getUserLoginInfoById(GetUserLoginInfoByIdRequest.getDefaultInstance())).satisfies(e->{assertThat(Status.fromThrowable(e).getCode()).isEqualTo(Status.Code.INVALID_ARGUMENT);assertThat(e.getMessage()).doesNotContain("SECRET");});
