@@ -13,6 +13,20 @@ public final class Requests {
   @NotBlank @Size(min=20,max=3000) String bio,@NotNull @Size(min=1,max=10) List<@NotBlank @Size(max=40) String> specialties,
   @NotNull @Min(0) @Max(60) Integer experience_years,@Size(max=20) List<@NotNull @Valid Certification> certifications,
   @Pattern(regexp="^[A-Za-z0-9._]{1,30}$") String instagram_handle,@Size(max=12) List<@NotNull @Pattern(regexp=MEDIA) String> result_image_urls) {}
+ /**
+  * Anonymous coach application. It carries only what an applicant can provide
+  * without an account; neither a role nor a user identifier is accepted.
+  */
+ public record Application(@NotBlank @Size(min=2,max=60) String full_name,
+  @NotBlank @Email @Size(max=254) String email,
+  @Pattern(regexp="^\\+[1-9][0-9]{7,14}$") String phone,
+  @Size(max=120) String headline,
+  @NotBlank @Size(min=20,max=3000) String bio,
+  @NotNull @Size(min=1,max=10) List<@NotBlank @Size(max=40) String> specialties,
+  @NotNull @Min(0) @Max(60) Integer experience_years,
+  @Size(max=20) List<@NotNull @Valid Certification> certifications,
+  @Pattern(regexp="^[A-Za-z0-9._]{1,30}$") String instagram_handle,
+  @Pattern(regexp="fa|en") String locale) {}
  public record Status(@NotNull AccountStatus status,@Size(max=500) String reason) {}
  public record Rejection(@NotBlank @Size(min=5,max=500) String reason) {}
 }

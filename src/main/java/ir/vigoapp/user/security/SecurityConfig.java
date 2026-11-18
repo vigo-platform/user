@@ -62,6 +62,11 @@ public class SecurityConfig {
   http.csrf(c->c.disable()).sessionManagement(s->s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
    .requestCache(c->c.disable()).formLogin(c->c.disable()).httpBasic(c->c.disable()).logout(c->c.disable())
    .authorizeHttpRequests(a->a
+    // Anonymous coach applications: the only intentionally unauthenticated write path.
+    .requestMatchers(POST,"/api/v1/coaches/applications").permitAll()
+    .requestMatchers(GET,"/api/v1/coaches/applications/{lookup_token}").permitAll()
+    .requestMatchers(GET,"/api/v1/admin/coaches/applications","/api/v1/admin/coaches/applications/{application_id}").hasRole("ADMIN")
+    .requestMatchers(POST,"/api/v1/admin/coaches/applications/{application_id}/approve","/api/v1/admin/coaches/applications/{application_id}/reject").hasRole("ADMIN")
     .requestMatchers(GET,"/api/v1/users/me").authenticated()
     .requestMatchers(PUT,"/api/v1/users/me").authenticated()
     .requestMatchers(POST,"/api/v1/coaches/me/profile").hasRole("ATHLETE")

@@ -21,5 +21,22 @@ public final class Views {
   if(privateView){v.put("status",c.status);v.put("rejection_reason",c.rejectionReason);}
   v.put("min_plan_price",null);v.put("active_athletes_count",0);v.put("created_at",c.createdAt);v.put("updated_at",c.updatedAt);return v;
  }
+ /** Minimum an applicant may read back with a status token: no PII, no review notes. */
+ public static Map<String,Object> applicationStatus(CoachApplication a) {
+  Map<String,Object> v=new LinkedHashMap<>();
+  v.put("application_id",a.id);v.put("status",a.status);v.put("submitted_at",a.createdAt);
+  v.put("reviewed_at",a.reviewedAt);return v;
+ }
+ /** Full review view. Applicant contact details are admin-only. */
+ public static Map<String,Object> coachApplication(CoachApplication a,Instant invitationExpiresAt,ObjectMapper json) {
+  Map<String,Object> v=new LinkedHashMap<>();
+  v.put("application_id",a.id);v.put("full_name",a.fullName);v.put("email",a.email);v.put("phone",a.phone);
+  v.put("headline",a.headline);v.put("bio",a.bio);v.put("specialties",json.readTree(a.specialties));
+  v.put("experience_years",a.experienceYears);v.put("certifications",json.readTree(a.certifications));
+  v.put("instagram_handle",a.instagramHandle);v.put("locale",a.locale);v.put("status",a.status);
+  v.put("rejection_reason",a.rejectionReason);v.put("reviewed_by",a.reviewedBy);v.put("reviewed_at",a.reviewedAt);
+  v.put("invitation_expires_at",invitationExpiresAt);v.put("created_at",a.createdAt);v.put("updated_at",a.updatedAt);
+  return v;
+ }
  public static <A,B> Paged<B> page(Page<A> page,java.util.function.Function<A,B> f) { return new Paged<>(page.getNumber(),page.getSize(),page.getTotalElements(),page.getTotalPages(),page.getContent().stream().map(f).toList()); }
 }
