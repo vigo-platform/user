@@ -1,7 +1,19 @@
 package ir.vigoapp.user.service;
 
 import ir.vigoapp.user.api.*;
-import ir.vigoapp.user.domain.*;
+import ir.vigoapp.user.domain.AccountStatus;
+import ir.vigoapp.user.domain.CoachStatus;
+import ir.vigoapp.user.domain.Role;
+import ir.vigoapp.user.domain.plan.PlanInclude;
+import ir.vigoapp.user.domain.plan.PlanStatus;
+import ir.vigoapp.user.dto.Requests;
+import ir.vigoapp.user.dto.Views;
+import ir.vigoapp.user.entity.CoachProfile;
+import ir.vigoapp.user.entity.plan.CoachPlan;
+import ir.vigoapp.user.entity.plan.CoachPlanInclude;
+import ir.vigoapp.user.repository.CoachPlanIncludeRepository;
+import ir.vigoapp.user.repository.CoachPlanRepository;
+import ir.vigoapp.user.repository.CoachRepository;
 import org.springframework.data.domain.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -29,10 +41,9 @@ public class CoachPlanService {
 
     /** Creates a plan for the authenticated coach. The coach must be approved. */
     public Map<String, Object> create(UUID coachId, Requests.Plan request) {
-        requireApprovedCoach(coachId);
+        var coach = requireApprovedCoach(coachId);
         validate(request);
-        var plan = new CoachPlan();
-        plan.coachId = coachId;
+        var plan = new CoachPlan(coach);
         apply(plan, request);
         plan.status = PlanStatus.ACTIVE;
         plans.saveAndFlush(plan);
@@ -40,7 +51,7 @@ public class CoachPlanService {
         return view(plan);
     }
 
-    public Map<String, Object> update(UUID coachId, UUID planId, Requests.Plan request) {
+    public Map<String, Object> update(UUID coachId, Long planId, Requests.Plan request) {
         validate(request);
         var plan = ownedPlan(coachId, planId, true);
         if (plan.status == PlanStatus.ARCHIVED) throw ApiException.conflict("PLAN_ARCHIVED");
@@ -52,7 +63,7 @@ public class CoachPlanService {
     }
 
     /** Soft delete: the plan leaves the marketplace, running subscriptions are untouched. */
-    public void archive(UUID coachId, UUID planId) {
+    public void archive(UUID coachId, Long planId) {
         var plan = ownedPlan(coachId, planId, true);
         if (plan.status == PlanStatus.ARCHIVED) throw ApiException.conflict("INVALID_STATE");
         plan.status = PlanStatus.ARCHIVED;
@@ -60,7 +71,7 @@ public class CoachPlanService {
         plans.flush();
     }
 
-    public void activate(UUID coachId, UUID planId) {
+    public void activate(UUID coachId, Long planId) {
         var plan = ownedPlan(coachId, planId, true);
         if (plan.status == PlanStatus.ACTIVE) throw ApiException.conflict("INVALID_STATE");
         plan.status = PlanStatus.ACTIVE;
@@ -70,12 +81,14 @@ public class CoachPlanService {
 
     @Transactional(readOnly = true)
     public List<Map<String, Object>> own(UUID coachId) {
-        return plans.findByCoachIdOrderByCreatedAtDesc(coachId).stream().map(this::view).toList();
+        return coaches.findByUser_PublicId(coachId)
+                .map(coach -> plans.findByCoachIdOrderByCreatedAtDesc(coach.userId).stream().map(this::view).toList())
+                .orElseGet(List::of);
     }
 
     /** Public catalogue: only active plans of approved, active coaches. */
     @Transactional(readOnly = true)
-    public Views.Paged<Map<String, Object>> marketplace(int page, int size, UUID coachId) {
+    public Views.Paged<Map<String, Object>> marketplace(int page, int size, Long coachId) {
         var pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
         Page<CoachPlan> result;
         if (coachId != null) {
@@ -90,7 +103,7 @@ public class CoachPlanService {
     }
 
     @Transactional(readOnly = true)
-    public Map<String, Object> detail(UUID planId) {
+    public Map<String, Object> detail(Long planId) {
         var plan = plans.findById(planId).orElseThrow(ApiException::notFound);
         boolean visible = plan.status == PlanStatus.ACTIVE && isPublicCoach(plan.coachId);
         if (!visible) throw ApiException.notFound();
@@ -98,41 +111,45 @@ public class CoachPlanService {
     }
 
     @Transactional(readOnly = true)
-    public CoachPlan requirePurchasable(UUID planId) {
+    public CoachPlan requirePurchasable(Long planId) {
         var plan = plans.findById(planId).orElseThrow(ApiException::notFound);
         if (plan.status != PlanStatus.ACTIVE) throw ApiException.conflict("PLAN_ARCHIVED");
         return plan;
     }
 
-    private boolean isPublicCoach(UUID coachId) {
-        return coaches.findByUser_PublicId(coachId)
+    private boolean isPublicCoach(Long coachId) {
+        return coaches.findByUserId(coachId)
                 .filter(c -> c.status == CoachStatus.APPROVED)
                 .filter(c -> c.user.status == AccountStatus.ACTIVE && c.user.role == Role.COACH)
                 .isPresent();
     }
 
-    private void requireApprovedCoach(UUID coachId) {
+    private CoachProfile requireApprovedCoach(UUID coachId) {
         var coach = coaches.findByUser_PublicId(coachId).orElseThrow(ApiException::forbidden);
         if (coach.status != CoachStatus.APPROVED || coach.user.status != AccountStatus.ACTIVE || coach.user.role != Role.COACH)
             throw ApiException.forbidden();
+        return coach;
     }
 
     /** 404 when the plan is unknown, 403 when it exists but belongs to another coach. */
-    private CoachPlan ownedPlan(UUID coachId, UUID planId, boolean lock) {
+    private CoachPlan ownedPlan(UUID coachId, Long planId, boolean lock) {
         var plan = (lock ? plans.lock(planId) : plans.findById(planId)).orElseThrow(ApiException::notFound);
-        if (!plan.coachId.equals(coachId)) throw ApiException.forbidden();
+        boolean owned = coaches.findByUser_PublicId(coachId)
+                .filter(coach -> plan.coachId.equals(coach.userId))
+                .isPresent();
+        if (!owned) throw ApiException.forbidden();
         return plan;
     }
 
     private void apply(CoachPlan plan, Requests.Plan r) {
         plan.title = r.title().strip();
         plan.description = r.description() == null || r.description().isBlank() ? null : r.description().strip();
-        plan.price = r.price();
+        plan.priceRial = r.price();
         plan.durationDays = r.duration_days();
         plan.updatedAt = Instant.now();
     }
 
-    private void replaceIncludes(UUID planId, List<PlanInclude> values) {
+    private void replaceIncludes(Long planId, List<PlanInclude> values) {
         includes.deleteForPlan(planId);
         var unique = new LinkedHashSet<>(values);
         for (var include : unique) {
@@ -154,7 +171,7 @@ public class CoachPlanService {
         v.put("coach_id", plan.coachId);
         v.put("title", plan.title);
         v.put("description", plan.description);
-        v.put("price", plan.price);
+        v.put("price", plan.priceRial);
         v.put("currency", plan.currency);
         v.put("duration_days", plan.durationDays);
         // Declaration order is stable and matches the documented category list.

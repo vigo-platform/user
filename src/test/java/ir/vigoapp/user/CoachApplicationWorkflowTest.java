@@ -1,12 +1,20 @@
 package ir.vigoapp.user;
 
+import ir.vigoapp.user.entity.UserAccount;
 import io.zonky.test.db.postgres.embedded.EmbeddedPostgres;
 import ir.vigoapp.contracts.user.v1.CreateUserRequest;
 import ir.vigoapp.contracts.user.v1.UserAuthInfo;
 import ir.vigoapp.user.api.ApiException;
-import ir.vigoapp.user.api.Requests;
 import ir.vigoapp.user.domain.*;
+import ir.vigoapp.user.dto.Requests;
 import ir.vigoapp.user.outbox.OutboxWriter;
+import ir.vigoapp.user.repository.CoachApplicationRepository;
+import ir.vigoapp.user.repository.CoachApplicationTokenRepository;
+import ir.vigoapp.user.repository.CoachCertificateRepository;
+import ir.vigoapp.user.repository.CoachExperienceRepository;
+import ir.vigoapp.user.repository.CoachInvitationRepository;
+import ir.vigoapp.user.repository.CoachRepository;
+import ir.vigoapp.user.repository.UserRepository;
 import ir.vigoapp.user.service.CoachApplicationService;
 import ir.vigoapp.user.service.CredentialService;
 import org.flywaydb.core.Flyway;
@@ -128,9 +136,9 @@ class CoachApplicationWorkflowTest {
         @SuppressWarnings("unchecked")
         var rows = (java.util.List<Map<String, Object>>) detail.get("certificates");
         assertThat(rows).hasSize(2);
-        assertThat(rows.get(0)).containsEntry("category", ir.vigoapp.user.domain.CoachCertificate.Category.UNIVERSITY)
+        assertThat(rows.get(0)).containsEntry("category", ir.vigoapp.user.entity.CoachCertificate.Category.UNIVERSITY)
                 .containsEntry("degree", "BSc").containsEntry("field_of_study", "Physical education");
-        assertThat(rows.get(1)).containsEntry("category", ir.vigoapp.user.domain.CoachCertificate.Category.FEDERATION)
+        assertThat(rows.get(1)).containsEntry("category", ir.vigoapp.user.entity.CoachCertificate.Category.FEDERATION)
                 .containsEntry("degree", null).containsEntry("field_of_study", null);
     }
 

@@ -1,5 +1,6 @@
 package ir.vigoapp.user.api;
 
+import ir.vigoapp.user.dto.Envelope;
 import ir.vigoapp.user.service.PlanPurchaseService;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
@@ -22,7 +23,7 @@ public class PlanPurchaseController {
 
     @PostMapping("/{plan_id}/purchase")
     @ResponseStatus(HttpStatus.ACCEPTED)
-    public Envelope<?> purchase(Authentication a, @PathVariable UUID plan_id) {
+    public Envelope<?> purchase(Authentication a, @PathVariable Long plan_id) {
         return Envelope.ok(purchases.purchase(id(a), plan_id));
     }
 

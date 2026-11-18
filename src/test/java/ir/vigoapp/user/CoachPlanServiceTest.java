@@ -1,9 +1,16 @@
 package ir.vigoapp.user;
 
+import ir.vigoapp.user.entity.CoachProfile;
+import ir.vigoapp.user.entity.UserAccount;
 import io.zonky.test.db.postgres.embedded.EmbeddedPostgres;
 import ir.vigoapp.user.api.ApiException;
-import ir.vigoapp.user.api.Requests;
 import ir.vigoapp.user.domain.*;
+import ir.vigoapp.user.domain.plan.PlanInclude;
+import ir.vigoapp.user.domain.plan.PlanStatus;
+import ir.vigoapp.user.dto.Requests;
+import ir.vigoapp.user.repository.CoachPlanIncludeRepository;
+import ir.vigoapp.user.repository.CoachPlanRepository;
+import ir.vigoapp.user.repository.CoachRepository;
 import ir.vigoapp.user.service.CoachPlanService;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.*;
@@ -110,7 +117,7 @@ class CoachPlanServiceTest {
 
     @Test
     void anotherCoachCannotEditArchiveOrActivateSomeoneElsesPlan() {
-        UUID planId = (UUID) inTx(() -> service.create(coachA, plan("Mine", 100000, PlanInclude.WORKOUT))).get("plan_id");
+        Long planId = (Long) inTx(() -> service.create(coachA, plan("Mine", 100000, PlanInclude.WORKOUT))).get("plan_id");
         assertThatThrownBy(() -> inTx(() -> service.update(coachB, planId, plan("Hijack", 100000, PlanInclude.WORKOUT))))
                 .isInstanceOfSatisfying(ApiException.class, e -> assertThat(e.status).isEqualTo(403));
         assertThatThrownBy(() -> inTx(() -> { service.archive(coachB, planId); return null; }))
@@ -121,7 +128,7 @@ class CoachPlanServiceTest {
 
     @Test
     void archivedPlanLeavesMarketplaceAndCannotBeEdited() {
-        UUID planId = (UUID) inTx(() -> service.create(coachA, plan("Season", 100000, PlanInclude.WORKOUT))).get("plan_id");
+        Long planId = (Long) inTx(() -> service.create(coachA, plan("Season", 100000, PlanInclude.WORKOUT))).get("plan_id");
         assertThat(inTx(() -> service.marketplace(0, 20, null)).content()).hasSize(1);
         inTx(() -> { service.archive(coachA, planId); return null; });
         assertThat(inTx(() -> service.marketplace(0, 20, null)).content()).isEmpty();
@@ -133,7 +140,7 @@ class CoachPlanServiceTest {
 
     @Test
     void reactivatingRestoresMarketplaceVisibility() {
-        UUID planId = (UUID) inTx(() -> service.create(coachA, plan("Season", 100000, PlanInclude.WORKOUT))).get("plan_id");
+        Long planId = (Long) inTx(() -> service.create(coachA, plan("Season", 100000, PlanInclude.WORKOUT))).get("plan_id");
         inTx(() -> { service.archive(coachA, planId); return null; });
         inTx(() -> { service.activate(coachA, planId); return null; });
         assertThat(inTx(() -> service.marketplace(0, 20, null)).content()).hasSize(1);
@@ -157,7 +164,7 @@ class CoachPlanServiceTest {
 
     @Test
     void detailOfArchivedPlanIsNotFoundForCustomers() {
-        UUID planId = (UUID) inTx(() -> service.create(coachA, plan("Season", 100000, PlanInclude.WORKOUT))).get("plan_id");
+        Long planId = (Long) inTx(() -> service.create(coachA, plan("Season", 100000, PlanInclude.WORKOUT))).get("plan_id");
         inTx(() -> { service.archive(coachA, planId); return null; });
         assertThatThrownBy(() -> inTx(() -> service.detail(planId)))
                 .isInstanceOfSatisfying(ApiException.class, e -> assertThat(e.status).isEqualTo(404));

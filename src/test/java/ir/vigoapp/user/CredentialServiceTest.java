@@ -1,7 +1,12 @@
 package ir.vigoapp.user;
 import ir.vigoapp.user.domain.*;
-import ir.vigoapp.user.service.*;
+import ir.vigoapp.user.entity.UserAccount;
 import ir.vigoapp.user.outbox.OutboxWriter;
+import ir.vigoapp.user.repository.CoachApplicationRepository;
+import ir.vigoapp.user.repository.CoachInvitationRepository;
+import ir.vigoapp.user.repository.CoachRepository;
+import ir.vigoapp.user.repository.UserRepository;
+import ir.vigoapp.user.service.*;
 import ir.vigoapp.contracts.user.v1.*;
 import org.junit.jupiter.api.*;
 import org.mockito.ArgumentCaptor;

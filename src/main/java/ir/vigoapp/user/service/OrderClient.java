@@ -1,6 +1,8 @@
 package ir.vigoapp.user.service;
 
 import ir.vigoapp.user.api.ApiException;
+import ir.vigoapp.user.dto.order.CreateOrderRequest;
+import ir.vigoapp.user.dto.order.CreateOrderResponse;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
@@ -11,7 +13,6 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.time.Duration;
 import java.util.Map;
-import java.util.UUID;
 
 /**
  * Synchronous boundary to the Order service.
@@ -26,9 +27,6 @@ import java.util.UUID;
 @Component
 public class OrderClient {
     /** Proposed request body; Order must confirm or amend before production use. */
-    public record CreateOrderRequest(UUID plan_id, UUID coach_id, UUID athlete_id,
-                                     int duration_days, String currency) {}
-    public record CreateOrderResponse(UUID order_id, String status) {}
 
     private final boolean enabled;
     private final RestClient client;
@@ -71,7 +69,7 @@ public class OrderClient {
                     .body(request)
                     .retrieve()
                     .body(CreateOrderResponse.class);
-            if (response == null || response.order_id() == null)
+            if (response == null || response.order_id() == null || response.order_id() <= 0)
                 throw new ApiException(503, "ORDER_UNAVAILABLE", "Order service returned no order",
                         "سرویس سفارش پاسخ معتبری برنگرداند");
             return response;

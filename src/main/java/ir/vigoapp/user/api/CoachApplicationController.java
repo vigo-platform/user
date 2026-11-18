@@ -1,4 +1,6 @@
 package ir.vigoapp.user.api;
+import ir.vigoapp.user.dto.Envelope;
+import ir.vigoapp.user.dto.Requests;
 import ir.vigoapp.user.security.PublicSubmissionRateLimiter;
 import ir.vigoapp.user.service.CoachApplicationService;
 import jakarta.servlet.http.HttpServletRequest;

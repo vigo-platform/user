@@ -1,7 +1,8 @@
 package ir.vigoapp.user;
 import ir.vigoapp.user.domain.*;
-import ir.vigoapp.user.service.*;
 import ir.vigoapp.user.outbox.*;
+import ir.vigoapp.user.repository.UserRepository;
+import ir.vigoapp.user.service.*;
 import ir.vigoapp.contracts.user.v1.*;
 import org.junit.jupiter.api.*;
 import org.springframework.boot.test.context.SpringBootTest;

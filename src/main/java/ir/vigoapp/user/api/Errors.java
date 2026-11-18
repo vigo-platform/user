@@ -1,4 +1,6 @@
 package ir.vigoapp.user.api;
+import ir.vigoapp.user.dto.Envelope;
+import ir.vigoapp.user.dto.FieldIssue;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.http.*;
@@ -15,7 +17,6 @@ import java.util.*;
 @RestControllerAdvice
 public class Errors {
  private static final Logger log=LoggerFactory.getLogger(Errors.class);
- public record FieldIssue(String field,String code,String message,String message_fa) {}
  @ExceptionHandler(ApiException.class) ResponseEntity<?> api(ApiException e,HttpServletRequest request) {
   if(e.status==403||e.status==409||"SELF_ACTION_NOT_ALLOWED".equals(e.code)){
    log.atWarn().addKeyValue("event","user_request_rejected").addKeyValue("result","REJECTED")

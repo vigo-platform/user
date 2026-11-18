@@ -1,6 +1,7 @@
 package ir.vigoapp.user.security;
-import ir.vigoapp.user.api.Envelope;
 import ir.vigoapp.user.domain.*;
+import ir.vigoapp.user.dto.Envelope;
+import ir.vigoapp.user.repository.UserRepository;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

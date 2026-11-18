@@ -1,8 +1,11 @@
 package ir.vigoapp.user;
 import ir.vigoapp.user.api.*;
 import ir.vigoapp.user.domain.*;
-import ir.vigoapp.user.service.ProfileService;
+import ir.vigoapp.user.dto.Views;
+import ir.vigoapp.user.entity.UserAccount;
+import ir.vigoapp.user.repository.UserRepository;
 import ir.vigoapp.user.security.SecurityConfig;
+import ir.vigoapp.user.service.ProfileService;
 import org.junit.jupiter.api.*;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.*;

@@ -1,7 +1,12 @@
 package ir.vigoapp.user.service;
 
 import ir.vigoapp.user.api.ApiException;
-import ir.vigoapp.user.domain.*;
+import ir.vigoapp.user.domain.plan.subscription.SubscriptionStatus;
+import ir.vigoapp.user.dto.order.CreateOrderRequest;
+import ir.vigoapp.user.dto.order.CreateOrderResponse;
+import ir.vigoapp.user.entity.plan.subscription.PlanSubscription;
+import ir.vigoapp.user.repository.PlanSubscriptionRepository;
+import ir.vigoapp.user.repository.UserRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -26,32 +31,34 @@ public class PlanPurchaseService {
     private final CoachPlanService plans;
     private final PlanSubscriptionRepository subscriptions;
     private final OrderClient orders;
+    private final UserRepository users;
     private final org.springframework.jdbc.core.JdbcTemplate db;
 
     public PlanPurchaseService(CoachPlanService plans, PlanSubscriptionRepository subscriptions,
-                               OrderClient orders, org.springframework.jdbc.core.JdbcTemplate db) {
-        this.plans = plans; this.subscriptions = subscriptions; this.orders = orders; this.db = db;
+                               OrderClient orders, org.springframework.jdbc.core.JdbcTemplate db, UserRepository users) {
+        this.plans = plans; this.subscriptions = subscriptions; this.orders = orders; this.db = db; this.users = users;
     }
 
     /**
      * Requests an order for a plan. The client sends only the plan id; any price it
      * might send is ignored because the request body has no price field.
      */
-    public Map<String, Object> purchase(UUID athleteId, UUID planId) {
+    public Map<String, Object> purchase(UUID athleteId, Long planId) {
         var plan = plans.requirePurchasable(planId);
-        if (plan.coachId.equals(athleteId)) throw ApiException.forbidden();
+        var athlete = users.findByPublicId(athleteId).orElseThrow(ApiException::forbidden);
+        if (plan.coachId.equals(athlete.id)) throw ApiException.forbidden();
 
         var subscription = new PlanSubscription();
         subscription.planId = plan.id;
         subscription.coachId = plan.coachId;
-        subscription.athleteId = athleteId;
+        subscription.athleteId = athlete.id;
         subscription.status = SubscriptionStatus.PENDING_PAYMENT;
         subscriptions.saveAndFlush(subscription);
 
-        OrderClient.CreateOrderResponse order;
+        CreateOrderResponse order;
         try {
-            order = orders.createOrder(new OrderClient.CreateOrderRequest(
-                    plan.id, plan.coachId, athleteId, plan.durationDays, plan.currency));
+            order = orders.createOrder(new CreateOrderRequest(
+                    plan.id, plan.coachId, athlete.id, plan.durationDays, plan.currency));
         } catch (RuntimeException failure) {
             // No order exists, so the pending row must not linger as a false purchase.
             subscriptions.delete(subscription);
@@ -79,7 +86,8 @@ public class PlanPurchaseService {
 
     @Transactional(readOnly = true)
     public List<Map<String, Object>> subscriptions(UUID athleteId) {
-        return subscriptions.findByAthleteIdOrderByCreatedAtDesc(athleteId).stream().map(s -> {
+        var athlete = users.findByPublicId(athleteId).orElseThrow(ApiException::forbidden);
+        return subscriptions.findByAthleteIdOrderByCreatedAtDesc(athlete.id).stream().map(s -> {
             Map<String, Object> row = new LinkedHashMap<>();
             row.put("subscription_id", s.id); row.put("plan_id", s.planId); row.put("coach_id", s.coachId);
             row.put("order_id", s.orderId); row.put("status", s.status);
@@ -94,7 +102,7 @@ public class PlanPurchaseService {
      * itself is a conditional update, so a redelivery or a duplicate event cannot
      * extend access twice. A pending or failed payment never reaches this method.
      */
-    public boolean applyPaymentSuccess(UUID eventId, UUID orderId, Instant paidAt) {
+    public boolean applyPaymentSuccess(UUID eventId, Long orderId, Instant paidAt) {
         int receipt = db.update("""
                 insert into consumed_events(consumer,event_id,event_type,consumed_at)
                 values(?,?,'OrderPaid',?) on conflict do nothing
@@ -122,8 +130,8 @@ public class PlanPurchaseService {
         return true;
     }
 
-    private int planDuration(UUID planId) {
-        Integer days = db.queryForObject("select duration_days from coach_plans where plan_id=?", Integer.class, planId);
+    private int planDuration(Long planId) {
+        Integer days = db.queryForObject("select duration_days from coach_plans where id=?", Integer.class, planId);
         return days == null ? 0 : days;
     }
 }

@@ -1,7 +1,13 @@
 package ir.vigoapp.user.service;
-import ir.vigoapp.user.domain.*;
 import ir.vigoapp.user.api.*;
+import ir.vigoapp.user.domain.*;
+import ir.vigoapp.user.dto.Requests;
+import ir.vigoapp.user.dto.Views;
+import ir.vigoapp.user.entity.CoachProfile;
+import ir.vigoapp.user.entity.UserAccount;
 import ir.vigoapp.user.outbox.OutboxWriter;
+import ir.vigoapp.user.repository.CoachRepository;
+import ir.vigoapp.user.repository.UserRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.data.domain.*;

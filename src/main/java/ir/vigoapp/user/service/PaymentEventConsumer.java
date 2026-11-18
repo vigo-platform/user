@@ -18,7 +18,7 @@ import java.util.UUID;
  *
  * <p><strong>Provisional contract.</strong> No Order service or event contract
  * exists in this organization yet, so the payload below is the proposed schema
- * recorded in api-contracts; the listener is disabled by default and must be
+ * used by User; the listener is disabled by default and must be
  * enabled only after the Order owner confirms it. Envelope fields follow the
  * existing Vigo convention:<br>
  * {@code {event_id, event_type:"OrderPaid", event_version:1, occurred_at, producer,
@@ -43,14 +43,18 @@ public class PaymentEventConsumer {
             topics = "${app.order.payment-topic:order.events}")
     public void consume(ConsumerRecord<String, String> record) {
         UUID eventId;
-        UUID orderId;
+        long orderId;
         Instant paidAt;
         try {
             JsonNode root = JSON.readTree(record.value());
             if (!"OrderPaid".equals(root.path("event_type").asString(""))) return;
             eventId = UUID.fromString(root.path("event_id").asString(""));
             JsonNode data = root.get("data");
-            orderId = UUID.fromString(data.path("order_id").asString(""));
+            JsonNode order = data.path("order_id");
+            if (!order.isIntegralNumber() || !order.canConvertToLong() || order.asLong() <= 0) {
+                throw new IllegalArgumentException("Invalid order ID");
+            }
+            orderId = order.asLong();
             try {
                 paidAt = Instant.parse(root.path("occurred_at").asString(""));
             } catch (DateTimeParseException ignored) {

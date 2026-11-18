@@ -1,8 +1,13 @@
 package ir.vigoapp.user;
 import ir.vigoapp.user.api.*;
 import ir.vigoapp.user.domain.*;
-import ir.vigoapp.user.service.ProfileService;
+import ir.vigoapp.user.dto.Requests;
+import ir.vigoapp.user.entity.CoachProfile;
+import ir.vigoapp.user.entity.UserAccount;
 import ir.vigoapp.user.outbox.OutboxWriter;
+import ir.vigoapp.user.repository.CoachRepository;
+import ir.vigoapp.user.repository.UserRepository;
+import ir.vigoapp.user.service.ProfileService;
 import org.junit.jupiter.api.*;
 import tools.jackson.databind.json.JsonMapper;
 import java.util.*;

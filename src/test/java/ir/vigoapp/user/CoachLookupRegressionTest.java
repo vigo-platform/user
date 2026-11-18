@@ -1,9 +1,13 @@
 package ir.vigoapp.user;
 
+import ir.vigoapp.user.entity.CoachProfile;
+import ir.vigoapp.user.entity.UserAccount;
 import io.zonky.test.db.postgres.embedded.EmbeddedPostgres;
 import ir.vigoapp.user.api.ApiException;
 import ir.vigoapp.user.domain.*;
 import ir.vigoapp.user.outbox.OutboxWriter;
+import ir.vigoapp.user.repository.CoachRepository;
+import ir.vigoapp.user.repository.UserRepository;
 import ir.vigoapp.user.service.ProfileService;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityManagerFactory;

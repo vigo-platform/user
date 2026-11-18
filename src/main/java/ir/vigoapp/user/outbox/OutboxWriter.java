@@ -1,5 +1,5 @@
 package ir.vigoapp.user.outbox;
-import ir.vigoapp.user.domain.UserAccount;
+import ir.vigoapp.user.entity.UserAccount;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;

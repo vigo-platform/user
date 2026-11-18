@@ -1,5 +1,7 @@
 package ir.vigoapp.user.api;
 import ir.vigoapp.user.domain.CoachApplicationStatus;
+import ir.vigoapp.user.dto.Envelope;
+import ir.vigoapp.user.dto.Requests;
 import ir.vigoapp.user.service.CoachApplicationService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
