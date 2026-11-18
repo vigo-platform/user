@@ -7,6 +7,10 @@ import java.util.UUID;
 public class CoachApplication {
  @Id public UUID id=UUID.randomUUID();
  @Column(name="full_name",nullable=false,length=60) public String fullName;
+ @Column(name="first_name",nullable=false,length=60) public String firstName;
+ @Column(name="last_name",nullable=false,length=60) public String lastName;
+ /** Public profile image asset; public visibility, never a private document. */
+ @Column(name="profile_image_file_id") public UUID profileImageFileId;
  @Column(nullable=false,length=254) public String email;
  @Column(length=16) public String phone;
  @Column(length=120) public String headline;

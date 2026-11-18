@@ -291,3 +291,39 @@ Equivalent request fields: GetUserLoginInfoByEmail/CheckEmailExists `{email}`, G
 ## Remaining deployment dependencies
 
 Auth must adopt contract3.1.0 UUID subjects, mTLS client support for production, user status/session behavior and event handling. Gateway routes are not changed here. Docker-dependent database/Kafka behavior and actual PKI handshakes require infrastructure verification; do not interpret skipped integration tests or a built jar as deployment approval. No git commit/push/remote or other repository modification was made by this service implementation.
+
+## Coach plans and purchase baseline
+
+| Route | Access |
+|---|---|
+| GET /api/v1/plans | public catalogue, active plans of approved coaches |
+| GET /api/v1/plans/{plan_id} | public; archived plans are 404 |
+| GET/POST /api/v1/coaches/me/plans | COACH; create requires an approved coach |
+| PUT /api/v1/coaches/me/plans/{plan_id} | owner COACH only |
+| DELETE /api/v1/coaches/me/plans/{plan_id} | owner; archives (soft delete) |
+| POST /api/v1/coaches/me/plans/{plan_id}/activate | owner; reactivates an archived plan |
+| POST /api/v1/plans/{plan_id}/purchase | ATHLETE |
+| GET /api/v1/plans/subscriptions/me | ATHLETE, own subscriptions |
+
+Ownership always comes from the token: a plan mutation addressed at another
+coach's plan returns 403, and an unknown plan returns 404. Plan categories are the
+`includes` set (`WORKOUT`, `NUTRITION`, `SUPPLEMENT`, `CHAT_SUPPORT`), so a
+combined workout+nutrition plan is data, not a new type. Archived plans leave the
+catalogue, cannot be edited (`409 PLAN_ARCHIVED`), and cannot be purchased.
+
+Purchases create a `PENDING_PAYMENT` subscription, then call Order. The request
+carries no price; only a payment-success event activates access, and activation is
+idempotent. Order does not exist yet, so the integration is disabled by default —
+see `api-contracts/docs/order-integration.md` for the proposed contract and the
+open questions. If Order is unavailable the pending row is removed and the caller
+gets `503 ORDER_UNAVAILABLE`.
+
+### Coach applicant documents
+
+`V4` adds first/last name, a public profile-image file id, and child tables for
+certificates and work experience. Certificates are categorical: `UNIVERSITY`
+carries `field_of_study` and `degree`, `FEDERATION` and `SKILL` do not, and sending
+academic fields for those categories is rejected rather than silently dropped.
+Each certificate references a private Storage asset (`file_id`) and requires one;
+User stores no file bytes. The admin view exposes the references and the applicant
+data; the public status endpoint still exposes neither.

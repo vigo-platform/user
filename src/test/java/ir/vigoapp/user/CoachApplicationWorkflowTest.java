@@ -27,6 +27,7 @@ import javax.sql.DataSource;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.mock;
@@ -81,8 +82,10 @@ class CoachApplicationWorkflowTest {
         var json = JsonMapper.builder().findAndAddModules().build();
         // Real outbox writer so the assertions cover the actual staged event rows.
         outbox = new OutboxWriter(new JdbcTemplate(dataSource), json);
-        service = new CoachApplicationService(applications, tokens, invitations, users, outbox, json,
-                Duration.ofDays(30), Duration.ofDays(90));
+        var certificateRows = factory.getRepository(CoachCertificateRepository.class);
+        var experienceRows = factory.getRepository(CoachExperienceRepository.class);
+        service = new CoachApplicationService(applications, tokens, invitations, certificateRows, experienceRows,
+                users, outbox, json, Duration.ofDays(30), Duration.ofDays(90));
         credentials = new CredentialService(users, outbox, Duration.ZERO, invitations, applications, coaches);
         tx = new TransactionTemplate(new JpaTransactionManager(entityManagerFactory));
     }
@@ -91,8 +94,11 @@ class CoachApplicationWorkflowTest {
     private <T> T inTx(java.util.function.Supplier<T> work) { return tx.execute(status -> work.get()); }
 
     private static Requests.Application application(String email) {
-        return new Requests.Application("Sara Coach", email, null, "Head coach",
-                "Fifteen years coaching strength athletes.", List.of("Strength"), 12, null, null, "fa");
+        return new Requests.Application("Sara", "Coach", email, null, "Head coach",
+                "Fifteen years coaching strength athletes.", List.of("Strength"), 12, null,
+                List.of(new Requests.Certificate(Requests.CertificateCategory.FEDERATION,
+                        "Level 2 coaching", "National federation", null, null, UUID.randomUUID().toString())),
+                List.of(new Requests.Experience("Strength coach", "City club", "Adult athletes", 36)), null, "fa");
     }
 
     private long accounts() { return new JdbcTemplate(dataSource).queryForObject("select count(*) from users", Long.class); }
@@ -109,6 +115,48 @@ class CoachApplicationWorkflowTest {
     }
 
     @Test
+    void certificateCategoriesCarryOnlyTheirOwnFields() {
+        var university = new Requests.Certificate(Requests.CertificateCategory.UNIVERSITY,
+                "BSc Sport Science", "Tehran University", "Physical education", "BSc", UUID.randomUUID().toString());
+        var federated = new Requests.Certificate(Requests.CertificateCategory.FEDERATION,
+                "Level 2", "National federation", null, null, UUID.randomUUID().toString());
+        var request = new Requests.Application("Sara", "Coach", "certs@example.com", null, null,
+                "Fifteen years coaching strength athletes.", List.of("Strength"), 10, null,
+                List.of(university, federated), List.of(), null, "fa");
+        var result = inTx(() -> service.submit(request));
+        Map<String, Object> detail = service.get((UUID) result.get("application_id"));
+        @SuppressWarnings("unchecked")
+        var rows = (java.util.List<Map<String, Object>>) detail.get("certificates");
+        assertThat(rows).hasSize(2);
+        assertThat(rows.get(0)).containsEntry("category", ir.vigoapp.user.domain.CoachCertificate.Category.UNIVERSITY)
+                .containsEntry("degree", "BSc").containsEntry("field_of_study", "Physical education");
+        assertThat(rows.get(1)).containsEntry("category", ir.vigoapp.user.domain.CoachCertificate.Category.FEDERATION)
+                .containsEntry("degree", null).containsEntry("field_of_study", null);
+    }
+
+    @Test
+    void academicFieldsOnNonUniversityCertificateAreRejected() {
+        var invalid = new Requests.Certificate(Requests.CertificateCategory.SKILL,
+                "Coaching course", "Center", "Physics", "MSc", UUID.randomUUID().toString());
+        var request = new Requests.Application("Sara", "Coach", "badcert@example.com", null, null,
+                "Fifteen years coaching strength athletes.", List.of("Strength"), 10, null,
+                List.of(invalid), null, null, "fa");
+        assertThatIllegalArgumentException().isThrownBy(() -> inTx(() -> service.submit(request)))
+                .withMessageContaining("UNIVERSITY");
+    }
+
+    @Test
+    void certificateWithoutDocumentIsRejected() {
+        var invalid = new Requests.Certificate(Requests.CertificateCategory.FEDERATION,
+                "Level 2", "Federation", null, null, null);
+        var request = new Requests.Application("Sara", "Coach", "nodoc@example.com", null, null,
+                "Fifteen years coaching strength athletes.", List.of("Strength"), 10, null,
+                List.of(invalid), null, null, "fa");
+        assertThatIllegalArgumentException().isThrownBy(() -> inTx(() -> service.submit(request)))
+                .withMessageContaining("document");
+    }
+
+    @Test
     void duplicateSubmissionReusesPendingAndIssuesAnotherLookupToken() {
         var first = inTx(() -> service.submit(application("dupe@example.com")));
         var second = inTx(() -> service.submit(application("DUPE@example.com")));
@@ -121,8 +169,8 @@ class CoachApplicationWorkflowTest {
     @Test
     void validInputButInvalidEmailIsRejected() {
         assertThatIllegalArgumentException().isThrownBy(() -> inTx(() -> service.submit(
-                new Requests.Application("Sara", "not-an-email", null, null, "Fifteen years coaching athletes.",
-                        List.of("Strength"), 5, null, null, "fa"))));
+                new Requests.Application("Sara", "Coach", "not-an-email", null, null,
+                        "Fifteen years coaching athletes.", List.of("Strength"), 5, null, null, null, null, "fa"))));
         assertThat(accounts()).isZero();
     }
 
@@ -131,7 +179,7 @@ class CoachApplicationWorkflowTest {
         var submitted = inTx(() -> service.submit(application("status@example.com")));
         var status = service.status((String) submitted.get("lookup_token"));
         assertThat(status.get("status")).isEqualTo(CoachApplicationStatus.PENDING);
-        assertThat(status).doesNotContainKeys("email", "full_name", "phone");
+        assertThat(status).doesNotContainKeys("email", "full_name", "first_name", "phone", "certificates", "experiences");
         assertThatThrownBy(() -> service.status("not-a-real-token")).isInstanceOfSatisfying(ApiException.class,
                 e -> assertThat(e.status).isEqualTo(404));
     }

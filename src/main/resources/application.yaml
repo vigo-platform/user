@@ -47,6 +47,14 @@ app:
   outbox:
     enabled: ${OUTBOX_ENABLED:true}
     poll-ms: ${OUTBOX_POLL_MS:1000}
+  order:
+    # Leave empty to keep purchases disabled: no Order service/contract exists yet.
+    base-url: ${ORDER_BASE_URL:}
+    allow-http: ${ORDER_ALLOW_HTTP:false}
+    payment-events:
+      # Provisional: enable only after the Order owner confirms the contract.
+      enabled: ${ORDER_PAYMENT_EVENTS_ENABLED:false}
+    payment-topic: ${ORDER_PAYMENT_TOPIC:order.events}
   coach-applications:
     # Invitations are single-use and email-bound; registration after this window
     # creates a normal ATHLETE account instead of a COACH.
