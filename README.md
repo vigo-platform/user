@@ -308,35 +308,33 @@ Equivalent request fields: GetUserLoginInfoByEmail/CheckEmailExists `{email}`, G
 
 Auth must adopt contract3.1.0 UUID subjects, mTLS client support for production, user status/session behavior and event handling. Gateway routes are not changed here. Docker-dependent database/Kafka behavior and actual PKI handshakes require infrastructure verification; do not interpret skipped integration tests or a built jar as deployment approval. No git commit/push/remote or other repository modification was made by this service implementation.
 
-## Coach plans and purchase baseline
+## Coach plan management and payment processing
 
 | Route | Access |
 |---|---|
-| GET /api/v1/plans | public catalogue, active plans of approved coaches |
-| GET /api/v1/plans/{plan_id} | public; archived plans are 404 |
 | GET/POST /api/v1/coaches/me/plans | COACH; create requires an approved coach |
+| GET /api/v1/coaches/me/plan/form-options | COACH; returns active `include_options` |
 | PUT /api/v1/coaches/me/plans/{plan_id} | owner COACH only |
 | DELETE /api/v1/coaches/me/plans/{plan_id} | owner; archives (soft delete) |
 | POST /api/v1/coaches/me/plans/{plan_id}/activate | owner; reactivates an archived plan |
-| POST /api/v1/plans/{plan_id}/purchase | ATHLETE |
-| GET /api/v1/plans/subscriptions/me | ATHLETE, own subscriptions |
 
 Ownership always comes from the token: a plan mutation addressed at another
-coach's plan returns 403, and an unknown plan returns 404. Plan categories are the
-`includes` set (`WORKOUT`, `NUTRITION`, `SUPPLEMENT`, `CHAT_SUPPORT`), so a
-combined workout+nutrition plan is data, not a new type. Archived plans leave the
-catalogue, cannot be edited (`409 PLAN_ARCHIVED`), and cannot be purchased.
+coach's plan returns 403, and an unknown plan returns 404. Plan writes accept
+`includes` as a list of codes from `plan_include_catalog`. The initial catalog
+contains `WORKOUT`, `NUTRITION`, `SUPPLEMENT`, and `CHAT_SUPPORT`. Form options
+contain `id`, `code`, `label`, and `display_order`. Existing selections remain
+readable when a catalog option is deactivated. Reactivate archived plans before
+editing (`409 PLAN_ARCHIVED`).
 
-Plan endpoints use numeric identifiers. `plan_id` is the plan's ID, `coach_id`
-is the coach's numeric user ID, and `subscription_id` is the subscription's ID.
+Plan endpoints use numeric identifiers. `plan_id` is the plan's ID and
+`coach_id` is the coach's numeric user ID.
 Authenticated requests still identify the caller through the JWT subject.
 
-Purchases create a `PENDING_PAYMENT` subscription, then call Order. The request
+Internally, `PlanPurchaseService` creates a `PENDING_PAYMENT` subscription and calls Order. The request
 carries numeric plan, coach and athlete IDs. The Order response and
 `OrderPaid.data.order_id` use the numeric order ID. A payment-success event
 activates access idempotently. The integration is disabled by default. If Order
-is unavailable, the pending row is removed and the caller gets
-`503 ORDER_UNAVAILABLE`.
+is unavailable, the pending subscription is rolled back.
 
 ### Coach applicant documents
 

@@ -1,6 +1,5 @@
 package ir.vigoapp.user.dto;
 import ir.vigoapp.user.domain.*;
-import ir.vigoapp.user.domain.plan.PlanInclude;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
 import java.time.LocalDate;
@@ -53,7 +52,7 @@ public final class Requests {
   @Size(max=1500) String description,
   @NotNull @Min(10000) Long price,
   @NotNull @Min(1) @Max(365) Integer duration_days,
-  @NotNull @Size(min=1,max=4) List<PlanInclude> includes) {}
+  @NotEmpty List<@NotBlank @Size(max=64) String> includes) {}
  public record Status(@NotNull AccountStatus status,@Size(max=500) String reason) {}
  public record Rejection(@NotBlank @Size(min=5,max=500) String reason) {}
 }

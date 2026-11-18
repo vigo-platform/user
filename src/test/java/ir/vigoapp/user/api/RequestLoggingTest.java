@@ -20,6 +20,7 @@ import ir.vigoapp.user.repository.CoachInvitationRepository;
 import ir.vigoapp.user.repository.CoachPlanIncludeRepository;
 import ir.vigoapp.user.repository.CoachPlanRepository;
 import ir.vigoapp.user.repository.CoachRepository;
+import ir.vigoapp.user.repository.PlanIncludeOptionRepository;
 import ir.vigoapp.user.repository.PlanSubscriptionRepository;
 import ir.vigoapp.user.repository.UserRepository;
 import ir.vigoapp.user.service.CredentialService;
@@ -77,6 +78,7 @@ class RequestLoggingTest {
     @MockitoBean CoachExperienceRepository coachExperiences;
     @MockitoBean CoachPlanRepository coachPlans;
     @MockitoBean CoachPlanIncludeRepository coachPlanIncludes;
+    @MockitoBean PlanIncludeOptionRepository planIncludeOptions;
     @MockitoBean PlanSubscriptionRepository planSubscriptions;
     @MockitoBean CoachRepository coaches;
     @MockitoBean org.springframework.jdbc.core.JdbcTemplate jdbc;

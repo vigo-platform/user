@@ -5,12 +5,13 @@ import ir.vigoapp.user.entity.UserAccount;
 import io.zonky.test.db.postgres.embedded.EmbeddedPostgres;
 import ir.vigoapp.user.api.ApiException;
 import ir.vigoapp.user.domain.*;
-import ir.vigoapp.user.domain.plan.PlanInclude;
 import ir.vigoapp.user.domain.plan.PlanStatus;
 import ir.vigoapp.user.dto.Requests;
+import ir.vigoapp.user.entity.plan.catalog.PlanIncludeOption;
 import ir.vigoapp.user.repository.CoachPlanIncludeRepository;
 import ir.vigoapp.user.repository.CoachPlanRepository;
 import ir.vigoapp.user.repository.CoachRepository;
+import ir.vigoapp.user.repository.PlanIncludeOptionRepository;
 import ir.vigoapp.user.service.CoachPlanService;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.*;
@@ -66,7 +67,8 @@ class CoachPlanServiceTest {
         var factory = new JpaRepositoryFactory(em);
         service = new CoachPlanService(factory.getRepository(CoachPlanRepository.class),
                 factory.getRepository(CoachPlanIncludeRepository.class),
-                factory.getRepository(CoachRepository.class));
+                factory.getRepository(CoachRepository.class),
+                factory.getRepository(PlanIncludeOptionRepository.class));
         inTx(() -> { seedCoach(coachA); seedCoach(coachB); return null; });
     }
 
@@ -92,33 +94,54 @@ class CoachPlanServiceTest {
 
     private <T> T inTx(java.util.function.Supplier<T> work) { return tx.execute(s -> work.get()); }
 
-    private static Requests.Plan plan(String title, long price, PlanInclude... includes) {
+    private static Requests.Plan plan(String title, long price, String... includes) {
         return new Requests.Plan(title, "Plan description", price, 30, List.of(includes));
     }
 
     @Test
     void coachCreatesAndListsOnlyOwnPlans() {
-        inTx(() -> { service.create(coachA, plan("A plan", 100000, PlanInclude.WORKOUT)); return null; });
-        inTx(() -> { service.create(coachB, plan("B plan", 200000, PlanInclude.NUTRITION)); return null; });
+        inTx(() -> { service.create(coachA, plan("A plan", 100000, "WORKOUT")); return null; });
+        inTx(() -> { service.create(coachB, plan("B plan", 200000, "NUTRITION")); return null; });
         var a = inTx(() -> service.own(coachA));
         var b = inTx(() -> service.own(coachB));
         assertThat(a).extracting(m -> m.get("title")).containsExactly("A plan");
         assertThat(b).extracting(m -> m.get("title")).containsExactly("B plan");
-        assertThat(new ArrayList<>(List.of(PlanInclude.class)).isEmpty()).isFalse();
-        assertThat(List.of(PlanInclude.WORKOUT)).isEqualTo(a.get(0).get("includes"));
+        assertThat(List.of("WORKOUT")).isEqualTo(a.get(0).get("includes"));
     }
 
     @Test
     void combinedAndSingleCategoriesAreJustDifferentIncludes() {
         var combined = inTx(() -> service.create(coachA, plan("Combined", 300000,
-                PlanInclude.WORKOUT, PlanInclude.NUTRITION)));
-        assertThat(List.of(PlanInclude.WORKOUT, PlanInclude.NUTRITION)).isEqualTo(combined.get("includes"));
+                "WORKOUT", "NUTRITION")));
+        assertThat(List.of("WORKOUT", "NUTRITION")).isEqualTo(combined.get("includes"));
+    }
+
+    @Test
+    void newCatalogOptionCanBeSelectedAndExistingSelectionsSurviveDeactivation() {
+        var option = new PlanIncludeOption();
+        option.setCode("VIDEO_REVIEW");
+        option.setLabel("Video review");
+        option.setDisplayOrder(50);
+        inTx(() -> { em.persist(option); return null; });
+
+        var created = inTx(() -> service.create(coachA, plan("Complete plan", 100000,
+                "WORKOUT", "NUTRITION", "SUPPLEMENT", "CHAT_SUPPORT", "VIDEO_REVIEW")));
+        Long planId = (Long) created.get("plan_id");
+        assertThat(created).containsEntry("includes",
+                List.of("WORKOUT", "NUTRITION", "SUPPLEMENT", "CHAT_SUPPORT", "VIDEO_REVIEW"));
+
+        inTx(() -> { em.find(PlanIncludeOption.class, option.getId()).setActive(false); return null; });
+        assertThatThrownBy(() -> inTx(() -> service.create(coachB, plan("New plan", 100000, "VIDEO_REVIEW"))))
+                .isInstanceOfSatisfying(ApiException.class, e -> assertThat(e.code).isEqualTo("VALIDATION_FAILED"));
+
+        var updated = inTx(() -> service.update(coachA, planId, plan("Edited plan", 100000, "VIDEO_REVIEW")));
+        assertThat(updated).containsEntry("includes", List.of("VIDEO_REVIEW"));
     }
 
     @Test
     void anotherCoachCannotEditArchiveOrActivateSomeoneElsesPlan() {
-        Long planId = (Long) inTx(() -> service.create(coachA, plan("Mine", 100000, PlanInclude.WORKOUT))).get("plan_id");
-        assertThatThrownBy(() -> inTx(() -> service.update(coachB, planId, plan("Hijack", 100000, PlanInclude.WORKOUT))))
+        Long planId = (Long) inTx(() -> service.create(coachA, plan("Mine", 100000, "WORKOUT"))).get("plan_id");
+        assertThatThrownBy(() -> inTx(() -> service.update(coachB, planId, plan("Hijack", 100000, "WORKOUT"))))
                 .isInstanceOfSatisfying(ApiException.class, e -> assertThat(e.status).isEqualTo(403));
         assertThatThrownBy(() -> inTx(() -> { service.archive(coachB, planId); return null; }))
                 .isInstanceOfSatisfying(ApiException.class, e -> assertThat(e.status).isEqualTo(403));
@@ -128,11 +151,11 @@ class CoachPlanServiceTest {
 
     @Test
     void archivedPlanLeavesMarketplaceAndCannotBeEdited() {
-        Long planId = (Long) inTx(() -> service.create(coachA, plan("Season", 100000, PlanInclude.WORKOUT))).get("plan_id");
+        Long planId = (Long) inTx(() -> service.create(coachA, plan("Season", 100000, "WORKOUT"))).get("plan_id");
         assertThat(inTx(() -> service.marketplace(0, 20, null)).content()).hasSize(1);
         inTx(() -> { service.archive(coachA, planId); return null; });
         assertThat(inTx(() -> service.marketplace(0, 20, null)).content()).isEmpty();
-        assertThatThrownBy(() -> inTx(() -> service.update(coachA, planId, plan("Season 2", 100000, PlanInclude.WORKOUT))))
+        assertThatThrownBy(() -> inTx(() -> service.update(coachA, planId, plan("Season 2", 100000, "WORKOUT"))))
                 .isInstanceOfSatisfying(ApiException.class, e -> assertThat(e.code).isEqualTo("PLAN_ARCHIVED"));
         assertThatThrownBy(() -> inTx(() -> { service.archive(coachA, planId); return null; }))
                 .isInstanceOfSatisfying(ApiException.class, e -> assertThat(e.status).isEqualTo(409));
@@ -140,7 +163,7 @@ class CoachPlanServiceTest {
 
     @Test
     void reactivatingRestoresMarketplaceVisibility() {
-        Long planId = (Long) inTx(() -> service.create(coachA, plan("Season", 100000, PlanInclude.WORKOUT))).get("plan_id");
+        Long planId = (Long) inTx(() -> service.create(coachA, plan("Season", 100000, "WORKOUT"))).get("plan_id");
         inTx(() -> { service.archive(coachA, planId); return null; });
         inTx(() -> { service.activate(coachA, planId); return null; });
         assertThat(inTx(() -> service.marketplace(0, 20, null)).content()).hasSize(1);
@@ -158,13 +181,13 @@ class CoachPlanServiceTest {
             em.flush();
             return null;
         });
-        assertThatThrownBy(() -> inTx(() -> service.create(pending, plan("Nope", 100000, PlanInclude.WORKOUT))))
+        assertThatThrownBy(() -> inTx(() -> service.create(pending, plan("Nope", 100000, "WORKOUT"))))
                 .isInstanceOfSatisfying(ApiException.class, e -> assertThat(e.status).isEqualTo(403));
     }
 
     @Test
     void detailOfArchivedPlanIsNotFoundForCustomers() {
-        Long planId = (Long) inTx(() -> service.create(coachA, plan("Season", 100000, PlanInclude.WORKOUT))).get("plan_id");
+        Long planId = (Long) inTx(() -> service.create(coachA, plan("Season", 100000, "WORKOUT"))).get("plan_id");
         inTx(() -> { service.archive(coachA, planId); return null; });
         assertThatThrownBy(() -> inTx(() -> service.detail(planId)))
                 .isInstanceOfSatisfying(ApiException.class, e -> assertThat(e.status).isEqualTo(404));

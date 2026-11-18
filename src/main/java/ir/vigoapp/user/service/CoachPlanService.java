@@ -5,16 +5,17 @@ import ir.vigoapp.user.api.*;
 import ir.vigoapp.user.domain.AccountStatus;
 import ir.vigoapp.user.domain.CoachStatus;
 import ir.vigoapp.user.domain.Role;
-import ir.vigoapp.user.domain.plan.PlanInclude;
 import ir.vigoapp.user.domain.plan.PlanStatus;
 import ir.vigoapp.user.dto.Requests;
 import ir.vigoapp.user.dto.Views;
 import ir.vigoapp.user.entity.CoachProfile;
 import ir.vigoapp.user.entity.plan.CoachPlan;
 import ir.vigoapp.user.entity.plan.CoachPlanInclude;
+import ir.vigoapp.user.entity.plan.catalog.PlanIncludeOption;
 import ir.vigoapp.user.repository.CoachPlanIncludeRepository;
 import ir.vigoapp.user.repository.CoachPlanRepository;
 import ir.vigoapp.user.repository.CoachRepository;
+import ir.vigoapp.user.repository.PlanIncludeOptionRepository;
 import org.springframework.data.domain.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -36,17 +37,19 @@ public class CoachPlanService {
     private final CoachPlanRepository plans;
     private final CoachPlanIncludeRepository includes;
     private final CoachRepository coaches;
+    private final PlanIncludeOptionRepository includeOptions;
 
 
     /** Creates a plan for the authenticated coach. The coach must be approved. */
     public Map<String, Object> create(UUID coachId, Requests.Plan request) {
         var coach = requireApprovedCoach(coachId);
         validate(request);
+        var selectedOptions = resolveIncludes(request.includes(), Set.of());
         var plan = new CoachPlan(coach);
         apply(plan, request);
         plan.setStatus(PlanStatus.ACTIVE);
         plans.saveAndFlush(plan);
-        replaceIncludes(plan.getId(), request.includes());
+        replaceIncludes(plan, selectedOptions);
         return view(plan);
     }
 
@@ -54,10 +57,12 @@ public class CoachPlanService {
         validate(request);
         var plan = ownedPlan(coachId, planId, true);
         if (plan.getStatus() == PlanStatus.ARCHIVED) throw ApiException.conflict("PLAN_ARCHIVED");
+        var alreadySelected = new HashSet<>(includes.findCodesForPlan(planId));
+        var selectedOptions = resolveIncludes(request.includes(), alreadySelected);
         apply(plan, request);
         plan.setUpdatedAt(Instant.now());
         plans.flush();
-        replaceIncludes(plan.getId(), request.includes());
+        replaceIncludes(plan, selectedOptions);
         return view(plan);
     }
 
@@ -148,15 +153,24 @@ public class CoachPlanService {
         plan.setUpdatedAt(Instant.now());
     }
 
-    private void replaceIncludes(Long planId, List<PlanInclude> values) {
-        includes.deleteForPlan(planId);
-        var unique = new LinkedHashSet<>(values);
-        for (var include : unique) {
-            var row = new CoachPlanInclude();
-            row.setPlanId(planId); row.setInclude(include);
-            includes.save(row);
+    private List<PlanIncludeOption> resolveIncludes(List<String> codes, Set<String> alreadySelected) {
+        var uniqueCodes = new HashSet<>(codes);
+        var options = includeOptions.findByCodeIn(uniqueCodes);
+        if (options.size() != uniqueCodes.size()) {
+            throw new ApiException(400, "VALIDATION_FAILED",
+                    "An included service is unknown", "یکی از خدمات انتخاب‌شده ناشناخته است");
         }
-        includes.flush();
+        if (options.stream().anyMatch(option -> !option.isActive() && !alreadySelected.contains(option.getCode()))) {
+            throw new ApiException(400, "VALIDATION_FAILED",
+                    "An included service is inactive", "یکی از خدمات انتخاب‌شده غیرفعال است");
+        }
+        return options;
+    }
+
+    private void replaceIncludes(CoachPlan plan, List<PlanIncludeOption> options) {
+        includes.deleteForPlan(plan.getId());
+        var selections = options.stream().map(option -> new CoachPlanInclude(plan, option)).toList();
+        includes.saveAllAndFlush(selections);
     }
 
     private static void validate(Requests.Plan r) {
@@ -173,9 +187,7 @@ public class CoachPlanService {
         v.put("price", plan.getPriceRial());
         v.put("currency", plan.getCurrency());
         v.put("duration_days", plan.getDurationDays());
-        // Declaration order is stable and matches the documented category list.
-        v.put("includes", includes.findForPlan(plan.getId()).stream().map(i -> i.getInclude())
-                .sorted(java.util.Comparator.comparingInt(Enum::ordinal)).toList());
+        v.put("includes", includes.findCodesForPlan(plan.getId()));
         v.put("status", plan.getStatus());
         v.put("created_at", plan.getCreatedAt());
         v.put("updated_at", plan.getUpdatedAt());

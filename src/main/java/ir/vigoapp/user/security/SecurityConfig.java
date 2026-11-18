@@ -68,16 +68,12 @@ public class SecurityConfig {
     .requestMatchers(GET,"/api/v1/coaches/applications/{lookup_token}").permitAll()
     .requestMatchers(GET,"/api/v1/admin/coaches/applications","/api/v1/admin/coaches/applications/{application_id}").hasRole("ADMIN")
     .requestMatchers(POST,"/api/v1/admin/coaches/applications/{application_id}/approve","/api/v1/admin/coaches/applications/{application_id}/reject").hasRole("ADMIN")
-    // Plan catalogue is public; every plan mutation is coach-only.
-    .requestMatchers(GET,"/api/v1/plans","/api/v1/plans/{plan_id}").permitAll()
-    .requestMatchers(GET,"/api/v1/coaches/me/plans").hasRole("COACH")
+    // Coaches manage their own plans.
+    .requestMatchers(GET,"/api/v1/coaches/me/plans","/api/v1/coaches/me/plan/form-options").hasRole("COACH")
     .requestMatchers(POST,"/api/v1/coaches/me/plans").hasRole("COACH")
     .requestMatchers(PUT,"/api/v1/coaches/me/plans/{plan_id}").hasRole("COACH")
     .requestMatchers(DELETE,"/api/v1/coaches/me/plans/{plan_id}").hasRole("COACH")
     .requestMatchers(POST,"/api/v1/coaches/me/plans/{plan_id}/activate").hasRole("COACH")
-    // Purchases and subscriptions belong to the authenticated athlete.
-    .requestMatchers(POST,"/api/v1/plans/{plan_id}/purchase").hasRole("ATHLETE")
-    .requestMatchers(GET,"/api/v1/plans/subscriptions/me").hasRole("ATHLETE")
     .requestMatchers(GET,"/api/v1/users/me").authenticated()
     .requestMatchers(PUT,"/api/v1/users/me").authenticated()
     .requestMatchers(POST,"/api/v1/coaches/me/profile").hasRole("ATHLETE")

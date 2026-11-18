@@ -6,17 +6,15 @@ import ir.vigoapp.user.entity.UserAccount;
 import io.zonky.test.db.postgres.embedded.EmbeddedPostgres;
 import ir.vigoapp.user.api.ApiException;
 import ir.vigoapp.user.domain.*;
-import ir.vigoapp.user.domain.plan.PlanInclude;
 import ir.vigoapp.user.domain.plan.subscription.SubscriptionStatus;
 import ir.vigoapp.user.dto.Requests;
 import ir.vigoapp.user.repository.CoachPlanIncludeRepository;
 import ir.vigoapp.user.repository.CoachPlanRepository;
 import ir.vigoapp.user.repository.CoachRepository;
+import ir.vigoapp.user.repository.PlanIncludeOptionRepository;
 import ir.vigoapp.user.repository.PlanSubscriptionRepository;
 import ir.vigoapp.user.repository.UserRepository;
 import ir.vigoapp.user.service.CoachPlanService;
-import ir.vigoapp.user.service.OrderClient;
-import ir.vigoapp.user.service.PlanPurchaseService;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.*;
 import org.springframework.data.jpa.repository.support.JpaRepositoryFactory;
@@ -78,7 +76,8 @@ class PlanPurchaseServiceTest {
         var factory = new JpaRepositoryFactory(em);
         planService = new CoachPlanService(factory.getRepository(CoachPlanRepository.class),
                 factory.getRepository(CoachPlanIncludeRepository.class),
-                factory.getRepository(CoachRepository.class));
+                factory.getRepository(CoachRepository.class),
+                factory.getRepository(PlanIncludeOptionRepository.class));
         orders = mock(OrderClient.class);
         purchases = new PlanPurchaseService(planService, factory.getRepository(PlanSubscriptionRepository.class),
                 orders, new JdbcTemplate(dataSource), factory.getRepository(UserRepository.class));
@@ -112,7 +111,7 @@ class PlanPurchaseServiceTest {
     private Long activePlan() {
         Map<String, Object> created = inTx(() -> planService.create(coachId,
                 new Requests.Plan("Monthly", "Plan description", 500_000L, 30,
-                        List.of(PlanInclude.WORKOUT, PlanInclude.NUTRITION))));
+                        List.of("WORKOUT", "NUTRITION"))));
         return (Long) created.get("plan_id");
     }
 
