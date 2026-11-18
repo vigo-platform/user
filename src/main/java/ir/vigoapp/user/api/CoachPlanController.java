@@ -1,5 +1,6 @@
 package ir.vigoapp.user.api;
 
+import lombok.RequiredArgsConstructor;
 import ir.vigoapp.user.dto.Envelope;
 import ir.vigoapp.user.dto.Requests;
 import ir.vigoapp.user.service.CoachPlanService;
@@ -18,10 +19,10 @@ import java.util.UUID;
  */
 @RestController
 @RequestMapping("/api/v1/coaches/me/plans")
+@RequiredArgsConstructor
 public class CoachPlanController {
     private final CoachPlanService service;
 
-    public CoachPlanController(CoachPlanService service) { this.service = service; }
 
     private static UUID id(Authentication a) { return UUID.fromString(a.getName()); }
 

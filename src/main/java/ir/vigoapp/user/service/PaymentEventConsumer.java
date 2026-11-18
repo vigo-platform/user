@@ -1,5 +1,6 @@
 package ir.vigoapp.user.service;
 
+import lombok.RequiredArgsConstructor;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -31,13 +32,13 @@ import java.util.UUID;
  */
 @Component
 @ConditionalOnProperty(name = "app.order.payment-events.enabled", havingValue = "true")
+@RequiredArgsConstructor
 public class PaymentEventConsumer {
     private static final Logger log = LoggerFactory.getLogger(PaymentEventConsumer.class);
     private static final JsonMapper JSON = JsonMapper.builder().build();
 
     private final PlanPurchaseService purchases;
 
-    public PaymentEventConsumer(PlanPurchaseService purchases) { this.purchases = purchases; }
 
     @KafkaListener(id = "userPaymentEvents", idIsGroup = false,
             topics = "${app.order.payment-topic:order.events}")

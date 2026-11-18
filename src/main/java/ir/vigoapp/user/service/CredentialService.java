@@ -35,29 +35,29 @@ public class CredentialService {
   String phone=r.hasPhone()?Identifiers.phone(r.getPhone()):null;
   if(email==null&&phone==null)throw new IllegalArgumentException("Identifier required");
   Identifiers.hash(r.getPasswordHash());
-  var u=new UserAccount();u.email=email;u.phone=phone;u.displayName=Identifiers.name(r.getFirstName())+" "+Identifiers.name(r.getLastName());u.replacePassword(r.getPasswordHash());
+  var u=new UserAccount();u.setEmail(email);u.setPhone(phone);u.setDisplayName(Identifiers.name(r.getFirstName())+" "+Identifiers.name(r.getLastName()));u.replacePassword(r.getPasswordHash());
   // Approved D5: restricted Auth CreateUser attests email OTP was verified before signup.
   // Phone verification is not attested by this contract and remains false.
-  u.emailVerified=email!=null;
-  u.phoneVerified=false;
+  u.setEmailVerified(email!=null);
+  u.setPhoneVerified(false);
   // Role, status and credential version are server-assigned defaults. A pending
   // coach invitation matched to this verified email is the only way this call
   // can create a COACH instead; the invitation is consumed exactly once.
   var invitation=email==null?Optional.<CoachInvitation>empty()
     :invitations.lockActiveByEmail(email,Instant.now());
-  invitation.ifPresent(i->u.role=Role.COACH);
+  invitation.ifPresent(i->u.setRole(Role.COACH));
   users.saveAndFlush(u);
   invitation.ifPresent(i->{
-   i.consumedAt=Instant.now();i.consumedUserId=u.id;
-   var application=applications.findById(i.applicationId).orElse(null);
+   i.setConsumedAt(Instant.now());i.setConsumedUserId(u.getId());
+   var application=applications.findById(i.getApplicationId()).orElse(null);
    if(application!=null) {
-    var c=new CoachProfile();c.user=u;c.displayName=application.fullName;c.headline=application.headline;
-    c.bio=application.bio;c.specialties=application.specialties;c.experienceYears=application.experienceYears;
-    c.certifications=application.certifications;c.instagramHandle=application.instagramHandle;
-    c.resultImageUrls="[]";c.status=CoachStatus.APPROVED;coaches.saveAndFlush(c);
+    var c=new CoachProfile();c.setUser(u);c.setDisplayName(application.getFullName());c.setHeadline(application.getHeadline());
+    c.setBio(application.getBio());c.setSpecialties(application.getSpecialties());c.setExperienceYears(application.getExperienceYears());
+    c.setCertifications(application.getCertifications());c.setInstagramHandle(application.getInstagramHandle());
+    c.setResultImageUrls("[]");c.setStatus(CoachStatus.APPROVED);coaches.saveAndFlush(c);
    }
   });
-  Map<String,Object> data=new LinkedHashMap<>();data.put("user_id",u.publicId);data.put("email",email);data.put("phone",phone);data.put("display_name",u.displayName);data.put("role",u.role);data.put("status",u.status);
+  Map<String,Object> data=new LinkedHashMap<>();data.put("user_id",u.getPublicId());data.put("email",email);data.put("phone",phone);data.put("display_name",u.getDisplayName());data.put("role",u.getRole());data.put("status",u.getStatus());
   events.emit(u,"UserRegistered",data);return info(u);
  }
  public long change(ChangeUserPasswordRequest r){
@@ -69,12 +69,12 @@ public class CredentialService {
  }
  private UserLoginInfoResponse login(Optional<UserAccount> result){var u=result.orElseThrow(()->Status.NOT_FOUND.asRuntimeException());return UserLoginInfoResponse.newBuilder().setUser(info(u)).setPasswordHash(u.passwordHash()).build();}
  public UserAuthInfo info(UserAccount u){
-  var b=UserAuthInfo.newBuilder().setUserId(u.id).addRoles(u.role.name())
-   .setStatus(u.status==AccountStatus.ACTIVE?UserStatus.USER_STATUS_ACTIVE:UserStatus.USER_STATUS_SUSPENDED)
-   .setEmailVerified(u.email!=null&&u.emailVerified).setPhoneVerified(u.phone!=null&&u.phoneVerified)
-   .setTwoFactorEnabled(u.twoFactorAuthentication)
-   .setCredentialVersion(u.credentialVersion).setCredentialsExpired(expired(u.credentialsChangedAt,Instant.now(),maxAge));
-  if(u.email!=null)b.setEmail(u.email);if(u.phone!=null)b.setPhone(u.phone);return b.build();
+  var b=UserAuthInfo.newBuilder().setUserId(u.getId()).addRoles(u.getRole().name())
+   .setStatus(u.getStatus()==AccountStatus.ACTIVE?UserStatus.USER_STATUS_ACTIVE:UserStatus.USER_STATUS_SUSPENDED)
+   .setEmailVerified(u.getEmail()!=null&&u.isEmailVerified()).setPhoneVerified(u.getPhone()!=null&&u.isPhoneVerified())
+   .setTwoFactorEnabled(u.isTwoFactorAuthentication())
+   .setCredentialVersion(u.getCredentialVersion()).setCredentialsExpired(expired(u.getCredentialsChangedAt(),Instant.now(),maxAge));
+  if(u.getEmail()!=null)b.setEmail(u.getEmail());if(u.getPhone()!=null)b.setPhone(u.getPhone());return b.build();
  }
  public static boolean expired(Instant changed,Instant now,Duration age){return !age.isZero()&&!now.isBefore(changed.plus(age));}
 }

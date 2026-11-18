@@ -16,6 +16,7 @@
  </repositories>
  <dependencyManagement><dependencies><dependency><groupId>io.grpc</groupId><artifactId>grpc-bom</artifactId><version>${grpc.version}</version><type>pom</type><scope>import</scope></dependency></dependencies></dependencyManagement>
  <dependencies>
+  <dependency><groupId>org.projectlombok</groupId><artifactId>lombok</artifactId><scope>provided</scope></dependency>
   <dependency><groupId>ir.vigoapp.contracts</groupId><artifactId>users-grpc-contract</artifactId><version>3.1.0</version></dependency>
   <dependency><groupId>io.grpc</groupId><artifactId>grpc-netty-shaded</artifactId></dependency>
   <dependency><groupId>io.grpc</groupId><artifactId>grpc-services</artifactId></dependency>
@@ -40,6 +41,36 @@
   <dependency><groupId>org.testcontainers</groupId><artifactId>testcontainers-postgresql</artifactId><version>${testcontainers.version}</version><scope>test</scope></dependency>
   <dependency><groupId>org.testcontainers</groupId><artifactId>testcontainers-kafka</artifactId><version>${testcontainers.version}</version><scope>test</scope></dependency>
  </dependencies>
- <build><plugins><plugin><groupId>org.springframework.boot</groupId><artifactId>spring-boot-maven-plugin</artifactId></plugin><plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-surefire-plugin</artifactId><configuration><excludes><exclude>**/*IT.java</exclude></excludes></configuration></plugin></plugins></build>
+ <build>
+  <plugins>
+   <plugin>
+    <groupId>org.apache.maven.plugins</groupId>
+    <artifactId>maven-compiler-plugin</artifactId>
+    <configuration>
+     <annotationProcessorPaths>
+      <path>
+       <groupId>org.projectlombok</groupId>
+       <artifactId>lombok</artifactId>
+       <version>${lombok.version}</version>
+      </path>
+     </annotationProcessorPaths>
+    </configuration>
+   </plugin>
+   <plugin>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-maven-plugin</artifactId>
+    <configuration>
+     <excludes>
+      <exclude><groupId>org.projectlombok</groupId><artifactId>lombok</artifactId></exclude>
+     </excludes>
+    </configuration>
+   </plugin>
+   <plugin>
+    <groupId>org.apache.maven.plugins</groupId>
+    <artifactId>maven-surefire-plugin</artifactId>
+    <configuration><excludes><exclude>**/*IT.java</exclude></excludes></configuration>
+   </plugin>
+  </plugins>
+ </build>
  <profiles><profile><id>integration</id><build><plugins><plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-failsafe-plugin</artifactId><executions><execution><goals><goal>integration-test</goal><goal>verify</goal></goals></execution></executions></plugin></plugins></build></profile></profiles>
 </project>

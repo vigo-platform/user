@@ -1,5 +1,8 @@
 package ir.vigoapp.user.entity.plan;
 
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -13,6 +16,9 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import java.io.Serializable;
 
+@Getter
+@Setter
+@NoArgsConstructor
 @Entity
 @Table(name = "coach_plan_levels")
 @IdClass(CoachPlanLevel.Key.class)
@@ -23,12 +29,12 @@ public class CoachPlanLevel {
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "plan_id", nullable = false,
             foreignKey = @ForeignKey(name = "coach_plan_levels_plan_fkey"))
-    public CoachPlan plan;
+    private CoachPlan plan;
 
     @Id
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 16)
-    public Level level;
+    private Level level;
 
     public record Key(Long plan, Level level) implements Serializable {}
 }

@@ -85,25 +85,25 @@ class PlanPurchaseServiceTest {
         inTx(() -> {
             seedCoach();
             var athlete = new UserAccount();
-            athlete.publicId = athleteId;
-            athlete.email = "athlete@example.test";
-            athlete.displayName = "Athlete";
+            athlete.setPublicId(athleteId);
+            athlete.setEmail("athlete@example.test");
+            athlete.setDisplayName("Athlete");
             athlete.replacePassword("hash");
             em.persist(athlete);
             em.flush();
-            athleteUserId = athlete.id;
+            athleteUserId = athlete.getId();
             return null;
         });
     }
 
     private void seedCoach() {
         var u = new UserAccount();
-        u.publicId = coachId; u.email = "coach@example.test"; u.displayName = "Coach";
-        u.replacePassword("hash"); u.role = Role.COACH; u.emailVerified = true;
+        u.setPublicId(coachId); u.setEmail("coach@example.test"); u.setDisplayName("Coach");
+        u.replacePassword("hash"); u.setRole(Role.COACH); u.setEmailVerified(true);
         em.persist(u); em.flush();
         var c = new CoachProfile();
-        c.user = u; c.displayName = "Coach"; c.bio = "Synthetic coach biography";
-        c.specialties = "[]"; c.status = CoachStatus.APPROVED;
+        c.setUser(u); c.setDisplayName("Coach"); c.setBio("Synthetic coach biography");
+        c.setSpecialties("[]"); c.setStatus(CoachStatus.APPROVED);
         em.persist(c); em.flush();
     }
 

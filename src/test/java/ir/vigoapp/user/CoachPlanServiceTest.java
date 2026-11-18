@@ -79,14 +79,14 @@ class CoachPlanServiceTest {
 
     private void seedCoach(UUID publicId) {
         var u = new UserAccount();
-        u.publicId = publicId; u.email = publicId + "@example.test";
-        u.displayName = "Coach " + publicId; u.replacePassword("hash");
-        u.role = Role.COACH; u.emailVerified = true;
+        u.setPublicId(publicId); u.setEmail(publicId + "@example.test");
+        u.setDisplayName("Coach " + publicId); u.replacePassword("hash");
+        u.setRole(Role.COACH); u.setEmailVerified(true);
         em.persist(u);
         em.flush(); // @MapsId needs the generated identity before the profile is persisted.
         var c = new CoachProfile();
-        c.user = u; c.displayName = u.displayName; c.bio = "Synthetic coach biography";
-        c.specialties = "[]"; c.status = CoachStatus.APPROVED;
+        c.setUser(u); c.setDisplayName(u.getDisplayName()); c.setBio("Synthetic coach biography");
+        c.setSpecialties("[]"); c.setStatus(CoachStatus.APPROVED);
         em.persist(c);
     }
 
@@ -152,8 +152,8 @@ class CoachPlanServiceTest {
         UUID pending = UUID.randomUUID();
         inTx(() -> {
             var u = new UserAccount();
-            u.publicId = pending; u.email = "pending@example.test"; u.displayName = "Pending";
-            u.replacePassword("hash"); u.role = Role.ATHLETE; u.emailVerified = true;
+            u.setPublicId(pending); u.setEmail("pending@example.test"); u.setDisplayName("Pending");
+            u.replacePassword("hash"); u.setRole(Role.ATHLETE); u.setEmailVerified(true);
             em.persist(u);
             em.flush();
             return null;

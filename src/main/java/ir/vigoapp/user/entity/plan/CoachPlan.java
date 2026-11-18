@@ -1,5 +1,9 @@
 package ir.vigoapp.user.entity.plan;
 
+import lombok.AccessLevel;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 import ir.vigoapp.user.domain.plan.PlanStatus;
 import ir.vigoapp.user.entity.CoachProfile;
 import jakarta.persistence.Column;
@@ -16,68 +20,71 @@ import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 import java.time.Instant;
 
+@Getter
+@Setter
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
 @Entity
 @Table(name = "coach_plans")
 public class CoachPlan {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    public Long id;
+    private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "coach_user_id", nullable = false, updatable = false,
             foreignKey = @ForeignKey(name = "coach_plans_coach_user_fkey"))
-    public CoachProfile coach;
+    @Setter(AccessLevel.NONE)
+    private CoachProfile coach;
 
     @Column(name = "coach_user_id", nullable = false, insertable = false, updatable = false)
-    public Long coachId;
+    @Setter(AccessLevel.NONE)
+    private Long coachId;
 
     @Column(nullable = false, length = 100)
-    public String title;
+    private String title;
 
     @Column(length = 180)
-    public String summary;
+    private String summary;
 
     @Column(columnDefinition = "text")
-    public String description;
+    private String description;
 
     @Column(name = "price_rial", nullable = false)
-    public long priceRial;
+    private long priceRial;
 
     @Column(name = "compare_at_price_rial")
-    public Long compareAtPriceRial;
+    private Long compareAtPriceRial;
 
     @Column(name = "currency", nullable = false, length = 3)
-    public String currency = "IRR";
+    private String currency = "IRR";
 
     @Column(name = "duration_days", nullable = false)
-    public int durationDays;
+    private int durationDays;
 
     @Column(name = "first_delivery_days")
-    public Integer firstDeliveryDays;
+    private Integer firstDeliveryDays;
 
     @Convert(converter = PlanStatus.ActiveFlagConverter.class)
     @Column(name = "is_active", nullable = false)
-    public PlanStatus status = PlanStatus.ARCHIVED;
+    private PlanStatus status = PlanStatus.ARCHIVED;
 
     @Column(name = "is_recommended", nullable = false)
-    public boolean recommended;
+    private boolean recommended;
 
     @Column(name = "display_order", nullable = false)
-    public int displayOrder;
+    private int displayOrder;
 
     @Column(name = "created_at", nullable = false)
-    public Instant createdAt = Instant.now();
+    private Instant createdAt = Instant.now();
 
     @Column(name = "updated_at", nullable = false)
-    public Instant updatedAt = createdAt;
+    private Instant updatedAt = createdAt;
 
     @Version
-    public long version;
-
-    protected CoachPlan() {}
+    private long version;
 
     public CoachPlan(CoachProfile coach) {
         this.coach = coach;
-        this.coachId = coach.userId;
+        this.coachId = coach.getUserId();
     }
 }

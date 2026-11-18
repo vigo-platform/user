@@ -1,4 +1,5 @@
 package ir.vigoapp.user.grpc;
+import lombok.RequiredArgsConstructor;
 import io.grpc.*;
 import io.grpc.netty.shaded.io.grpc.netty.*;
 import io.grpc.netty.shaded.io.netty.handler.ssl.ClientAuth;
@@ -18,10 +19,10 @@ import java.io.File;
 import java.util.Arrays;
 import java.util.concurrent.TimeUnit;
 @Component("grpcHealthIndicator")
+@RequiredArgsConstructor
 public class GrpcServerLifecycle implements SmartLifecycle, HealthIndicator {
  private static final Logger log=LoggerFactory.getLogger(GrpcServerLifecycle.class);
  private final UserGrpcEndpoint endpoint;private final Environment env;private final ObservationRegistry observations;private volatile Server server;
- public GrpcServerLifecycle(UserGrpcEndpoint endpoint,Environment env,ObservationRegistry observations){this.endpoint=endpoint;this.env=env;this.observations=observations;}
  @Override public synchronized void start(){
   if(isRunning())return;
   boolean plaintext=env.getProperty("app.grpc.dev-plaintext-enabled",Boolean.class,false);

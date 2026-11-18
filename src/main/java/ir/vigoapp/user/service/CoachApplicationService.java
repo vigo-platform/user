@@ -74,19 +74,19 @@ public class CoachApplicationService {
   String firstName=Identifiers.name(r.first_name());
   String lastName=Identifiers.name(r.last_name());
   var a=new CoachApplication();
-  a.firstName=firstName;a.lastName=lastName;
-  a.fullName=(firstName+" "+lastName).strip();
-  a.profileImageFileId=uuidOrNull(r.profile_image_file_id());
-  a.email=email;a.phone=phone;a.headline=blankToNull(r.headline());
-  a.bio=r.bio().strip();
-  a.specialties=json.writeValueAsString(r.specialties().stream().map(String::strip).toList());
-  a.experienceYears=r.experience_years();
+  a.setFirstName(firstName);a.setLastName(lastName);
+  a.setFullName((firstName+" "+lastName).strip());
+  a.setProfileImageFileId(uuidOrNull(r.profile_image_file_id()));
+  a.setEmail(email);a.setPhone(phone);a.setHeadline(blankToNull(r.headline()));
+  a.setBio(r.bio().strip());
+  a.setSpecialties(json.writeValueAsString(r.specialties().stream().map(String::strip).toList()));
+  a.setExperienceYears(r.experience_years());
   // Legacy column kept for the existing contract; structured rows are authoritative.
-  a.certifications=json.writeValueAsString(r.certificates()==null?List.of():r.certificates());
-  a.instagramHandle=blankToNull(r.instagram_handle());
-  a.locale=r.locale()==null?"fa":r.locale();
-  a.status=CoachApplicationStatus.PENDING;
-  a.aggregateVersion=1;
+  a.setCertifications(json.writeValueAsString(r.certificates()==null?List.of():r.certificates()));
+  a.setInstagramHandle(blankToNull(r.instagram_handle()));
+  a.setLocale(r.locale()==null?"fa":r.locale());
+  a.setStatus(CoachApplicationStatus.PENDING);
+  a.setAggregateVersion(1);
   try { applications.saveAndFlush(a); }
   catch(DataIntegrityViolationException unexpected) {
    // The unique index is a backstop; the advisory lock should make this unreachable.
@@ -96,26 +96,26 @@ public class CoachApplicationService {
   storeExperiences(a,r.experiences());
   String lookupToken=issueLookupToken(a);
   Map<String,Object> data=new LinkedHashMap<>();
-  data.put("application_id",a.id);data.put("full_name",a.fullName);data.put("email",a.email);
-  data.put("phone",a.phone);data.put("locale",a.locale);data.put("status",a.status);
-  data.put("submitted_at",a.createdAt);
-  events.emit(a.id,a.aggregateVersion,"CoachApplicationSubmitted",data);
+  data.put("application_id",a.getId());data.put("full_name",a.getFullName());data.put("email",a.getEmail());
+  data.put("phone",a.getPhone());data.put("locale",a.getLocale());data.put("status",a.getStatus());
+  data.put("submitted_at",a.getCreatedAt());
+  events.emit(a.getId(),a.getAggregateVersion(),"CoachApplicationSubmitted",data);
   log.atInfo().addKeyValue("event","coach_application_submitted").addKeyValue("result","STAGED")
-   .addKeyValue("application_id",a.id).log("Public coach application staged for review.");
+   .addKeyValue("application_id",a.getId()).log("Public coach application staged for review.");
   return summary(a,lookupToken);
  }
  @Transactional(readOnly=true)
  public Map<String,Object> status(String lookupToken) {
   if(!OpaqueTokens.looksValid(lookupToken))throw ApiException.notFound();
   var token=tokens.findByTokenHashAndExpiresAtAfter(OpaqueTokens.digest(lookupToken),Instant.now()).orElseThrow(ApiException::notFound);
-  var a=applications.findById(token.applicationId).orElseThrow(ApiException::notFound);
+  var a=applications.findById(token.getApplicationId()).orElseThrow(ApiException::notFound);
   return Views.applicationStatus(a);
  }
  @Transactional(readOnly=true)
  public Views.Paged<Map<String,Object>> list(int page,int size,CoachApplicationStatus status) {
   var pageable=PageRequest.of(page,size,Sort.by("createdAt").descending().and(Sort.by("id")));
   var result=status==null?applications.findAll(pageable):applications.findAllByStatus(status,pageable);
-  return Views.page(result,a->view(a,invitationExpiry(a.id)));
+  return Views.page(result,a->view(a,invitationExpiry(a.getId())));
  }
  @Transactional(readOnly=true)
  public Map<String,Object> get(UUID id) {
@@ -124,44 +124,44 @@ public class CoachApplicationService {
  }
  public Map<String,Object> approve(UUID actor,UUID id) {
   var a=applications.lock(id).orElseThrow(ApiException::notFound);
-  if(a.status!=CoachApplicationStatus.PENDING)throw ApiException.conflict("INVALID_STATE");
+  if(a.getStatus()!=CoachApplicationStatus.PENDING)throw ApiException.conflict("INVALID_STATE");
   // An invitation must be the only route to COACH. Refuse to issue one for an
   // address that already has an account; the admin can reject instead.
-  if(users.existsByEmail(a.email))throw ApiException.conflict("EMAIL_ALREADY_REGISTERED");
-  if(invitations.existsByApplicationId(a.id))throw ApiException.conflict("INVALID_STATE");
+  if(users.existsByEmail(a.getEmail()))throw ApiException.conflict("EMAIL_ALREADY_REGISTERED");
+  if(invitations.existsByApplicationId(a.getId()))throw ApiException.conflict("INVALID_STATE");
   Instant now=Instant.now();
   String token=OpaqueTokens.newToken();
   var invitation=new CoachInvitation();
-  invitation.applicationId=a.id;invitation.email=a.email;
-  invitation.tokenHash=OpaqueTokens.digest(token);
-  invitation.createdAt=now;invitation.expiresAt=now.plus(invitationTtl);
+  invitation.setApplicationId(a.getId());invitation.setEmail(a.getEmail());
+  invitation.setTokenHash(OpaqueTokens.digest(token));
+  invitation.setCreatedAt(now);invitation.setExpiresAt(now.plus(invitationTtl));
   invitations.saveAndFlush(invitation);
-  a.status=CoachApplicationStatus.APPROVED;a.rejectionReason=null;
-  a.reviewedBy=actor;a.reviewedAt=now;a.updatedAt=now;a.aggregateVersion++;
+  a.setStatus(CoachApplicationStatus.APPROVED);a.setRejectionReason(null);
+  a.setReviewedBy(actor);a.setReviewedAt(now);a.setUpdatedAt(now);a.setAggregateVersion(a.getAggregateVersion() + 1);
   Map<String,Object> data=new LinkedHashMap<>();
-  data.put("application_id",a.id);data.put("full_name",a.fullName);data.put("email",a.email);
-  data.put("locale",a.locale);data.put("status",a.status);
-  data.put("invitation_token",token);data.put("invitation_expires_at",invitation.expiresAt);
+  data.put("application_id",a.getId());data.put("full_name",a.getFullName());data.put("email",a.getEmail());
+  data.put("locale",a.getLocale());data.put("status",a.getStatus());
+  data.put("invitation_token",token);data.put("invitation_expires_at",invitation.getExpiresAt());
   data.put("reviewed_by",actor);data.put("reviewed_at",now);
-  events.emit(a.id,a.aggregateVersion,"CoachApplicationApproved",data);
+  events.emit(a.getId(),a.getAggregateVersion(),"CoachApplicationApproved",data);
   log.atInfo().addKeyValue("event","coach_application_approved").addKeyValue("result","STAGED")
-   .addKeyValue("application_id",a.id).addKeyValue("actor_public_id",actor)
+   .addKeyValue("application_id",a.getId()).addKeyValue("actor_public_id",actor)
    .log("Coach application approved and a registration invitation issued.");
-  return view(a,invitation.expiresAt);
+  return view(a,invitation.getExpiresAt());
  }
  public Map<String,Object> reject(UUID actor,UUID id,String reason) {
   var a=applications.lock(id).orElseThrow(ApiException::notFound);
-  if(a.status!=CoachApplicationStatus.PENDING)throw ApiException.conflict("INVALID_STATE");
+  if(a.getStatus()!=CoachApplicationStatus.PENDING)throw ApiException.conflict("INVALID_STATE");
   Instant now=Instant.now();
-  a.status=CoachApplicationStatus.REJECTED;a.rejectionReason=reason.strip();
-  a.reviewedBy=actor;a.reviewedAt=now;a.updatedAt=now;a.aggregateVersion++;
+  a.setStatus(CoachApplicationStatus.REJECTED);a.setRejectionReason(reason.strip());
+  a.setReviewedBy(actor);a.setReviewedAt(now);a.setUpdatedAt(now);a.setAggregateVersion(a.getAggregateVersion() + 1);
   Map<String,Object> data=new LinkedHashMap<>();
-  data.put("application_id",a.id);data.put("full_name",a.fullName);data.put("email",a.email);
-  data.put("locale",a.locale);data.put("status",a.status);data.put("reason",a.rejectionReason);
+  data.put("application_id",a.getId());data.put("full_name",a.getFullName());data.put("email",a.getEmail());
+  data.put("locale",a.getLocale());data.put("status",a.getStatus());data.put("reason",a.getRejectionReason());
   data.put("reviewed_by",actor);data.put("reviewed_at",now);
-  events.emit(a.id,a.aggregateVersion,"CoachApplicationRejected",data);
+  events.emit(a.getId(),a.getAggregateVersion(),"CoachApplicationRejected",data);
   log.atInfo().addKeyValue("event","coach_application_rejected").addKeyValue("result","STAGED")
-   .addKeyValue("application_id",a.id).addKeyValue("actor_public_id",actor).log("Coach application rejected.");
+   .addKeyValue("application_id",a.getId()).addKeyValue("actor_public_id",actor).log("Coach application rejected.");
   return view(a,null);
  }
  private void storeCertificates(CoachApplication a,List<Requests.Certificate> rows) {
@@ -169,20 +169,20 @@ public class CoachApplicationService {
   for(int i=0;i<rows.size();i++) {
    var source=rows.get(i);
    var row=new CoachCertificate();
-   row.applicationId=a.id;
-   row.category=CoachCertificate.Category.valueOf(source.category().name());
-   row.title=source.title().strip();
-   row.issuer=blankToNull(source.issuer());
+   row.setApplicationId(a.getId());
+   row.setCategory(CoachCertificate.Category.valueOf(source.category().name()));
+   row.setTitle(source.title().strip());
+   row.setIssuer(blankToNull(source.issuer()));
    if(source.category()==Requests.CertificateCategory.UNIVERSITY) {
-    row.fieldOfStudy=blankToNull(source.field_of_study());
-    row.degree=blankToNull(source.degree());
+    row.setFieldOfStudy(blankToNull(source.field_of_study()));
+    row.setDegree(blankToNull(source.degree()));
    } else if(source.field_of_study()!=null||source.degree()!=null) {
     // Reject academic fields on unrelated categories instead of silently dropping them.
     throw new IllegalArgumentException("field_of_study and degree apply only to UNIVERSITY certificates");
    }
-   row.fileId=uuidOrNull(source.file_id());
-   if(row.fileId==null)throw new IllegalArgumentException("A certificate document is required");
-   row.position=i;
+   row.setFileId(uuidOrNull(source.file_id()));
+   if(row.getFileId()==null)throw new IllegalArgumentException("A certificate document is required");
+   row.setPosition(i);
    certificates.save(row);
   }
  }
@@ -191,36 +191,36 @@ public class CoachApplicationService {
   for(int i=0;i<rows.size();i++) {
    var source=rows.get(i);
    var row=new CoachExperience();
-   row.applicationId=a.id;
-   row.title=source.title().strip();
-   row.organization=blankToNull(source.organization());
-   row.description=blankToNull(source.description());
-   row.durationMonths=source.duration_months();
-   row.position=i;
+   row.setApplicationId(a.getId());
+   row.setTitle(source.title().strip());
+   row.setOrganization(blankToNull(source.organization()));
+   row.setDescription(blankToNull(source.description()));
+   row.setDurationMonths(source.duration_months());
+   row.setPosition(i);
    experiences.save(row);
   }
  }
  /** Loads the structured children so detail and list responses stay consistent. */
  private Map<String,Object> view(CoachApplication a,Instant invitationExpiresAt) {
   return Views.coachApplication(a,invitationExpiresAt,
-   certificates.findByApplicationIdOrderByPosition(a.id),
-   experiences.findByApplicationIdOrderByPosition(a.id),json);
+   certificates.findByApplicationIdOrderByPosition(a.getId()),
+   experiences.findByApplicationIdOrderByPosition(a.getId()),json);
  }
  private static UUID uuidOrNull(String value) { return value==null||value.isBlank()?null:UUID.fromString(value); }
  private String issueLookupToken(CoachApplication a) {
   String token=OpaqueTokens.newToken();
   var row=new CoachApplicationToken();
-  row.tokenHash=OpaqueTokens.digest(token);row.applicationId=a.id;
-  row.createdAt=Instant.now();row.expiresAt=row.createdAt.plus(lookupTtl);
+  row.setTokenHash(OpaqueTokens.digest(token));row.setApplicationId(a.getId());
+  row.setCreatedAt(Instant.now());row.setExpiresAt(row.getCreatedAt().plus(lookupTtl));
   tokens.save(row);
   return token;
  }
  private Instant invitationExpiry(UUID applicationId) {
-  return invitations.findByApplicationId(applicationId).map(i->i.expiresAt).orElse(null);
+  return invitations.findByApplicationId(applicationId).map(i->i.getExpiresAt()).orElse(null);
  }
  private static Map<String,Object> summary(CoachApplication a,String lookupToken) {
   Map<String,Object> v=new LinkedHashMap<>();
-  v.put("application_id",a.id);v.put("status",a.status);v.put("lookup_token",lookupToken);v.put("submitted_at",a.createdAt);
+  v.put("application_id",a.getId());v.put("status",a.getStatus());v.put("lookup_token",lookupToken);v.put("submitted_at",a.getCreatedAt());
   return v;
  }
  private static String blankToNull(String value) { return value==null||value.isBlank()?null:value.strip(); }

@@ -37,8 +37,8 @@ class JwtSecurityTest {
    decoder.setJwtValidator(SecurityConfig.tokenValidator(ISSUER,"vigo-api"));return decoder;
   }
  }
- @BeforeEach void setUp(){var u=new UserAccount();u.id=1L;u.publicId=ID;u.role=ir.vigoapp.user.domain.Role.ATHLETE;u.email="synthetic@example.test";u.displayName="Synthetic User";
-  when(users.findById(u.id)).thenReturn(Optional.of(u));when(users.findByPublicId(ID)).thenReturn(Optional.of(u));when(profiles.get(ID)).thenReturn(Views.profile(u));}
+ @BeforeEach void setUp(){var u=new UserAccount();u.setId(1L);u.setPublicId(ID);u.setRole(ir.vigoapp.user.domain.Role.ATHLETE);u.setEmail("synthetic@example.test");u.setDisplayName("Synthetic User");
+  when(users.findById(u.getId())).thenReturn(Optional.of(u));when(users.findByPublicId(ID)).thenReturn(Optional.of(u));when(profiles.get(ID)).thenReturn(Views.profile(u));}
  String token(KeyPair key,String role,String subject,String issuer,String audience,Instant expires)throws Exception{
   var claims=new JWTClaimsSet.Builder().subject(subject).issuer(issuer).audience(audience).claim("role",role).issueTime(Date.from(Instant.now().minusSeconds(30))).expirationTime(Date.from(expires)).build();
   var jwt=new SignedJWT(new JWSHeader(JWSAlgorithm.RS256),claims);jwt.sign(new RSASSASigner((RSAPrivateKey)key.getPrivate()));return jwt.serialize();
@@ -104,9 +104,9 @@ class JwtSecurityTest {
  }
  @Test void roleIntersectionAndImmediateSuspension()throws Exception{
   mvc.perform(get("/api/v1/users").header("Authorization","Bearer "+good("ADMIN"))).andExpect(status().isForbidden());
-  var u=users.findByPublicId(ID).orElseThrow();u.role=ir.vigoapp.user.domain.Role.ADMIN;
+  var u=users.findByPublicId(ID).orElseThrow();u.setRole(ir.vigoapp.user.domain.Role.ADMIN);
   mvc.perform(get("/api/v1/users").header("Authorization","Bearer "+good("ATHLETE"))).andExpect(status().isForbidden());
-  u.status=AccountStatus.SUSPENDED;
+  u.setStatus(AccountStatus.SUSPENDED);
   mvc.perform(get("/api/v1/users/me").header("Authorization","Bearer "+good("ADMIN"))).andExpect(status().isUnauthorized());
  }
  @Test void strictUnknownFieldsAndValidation()throws Exception{

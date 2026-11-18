@@ -33,7 +33,7 @@ class PersistenceKafkaIT {
  @Autowired CredentialService credentials;@Autowired UserRepository users;@Autowired JdbcTemplate jdbc;@Autowired PlatformTransactionManager manager;@Autowired KafkaTemplate<String,String> producer;@Autowired OutboxWriter writer;
  @Autowired ProfileService profiles;
  @Test @Order(5) void retryHeadBlocksSuccessorAndExpiredLeaseReclaimsStableEvents(){
-  var created=credentials.create(request("ordered@example.test"));UUID id=users.findById(created.getUserId()).orElseThrow().publicId;
+  var created=credentials.create(request("ordered@example.test"));UUID id=users.findById(created.getUserId()).orElseThrow().getPublicId();
   new TransactionTemplate(manager).executeWithoutResult(s->{var u=users.lock(id).orElseThrow();writer.emit(u,"UserStatusChanged",Map.of("user_id",id,"old_status","ACTIVE","new_status","SUSPENDED"));});
   var ids=jdbc.queryForList("select event_id from outbox where aggregate_id=? order by aggregate_version",UUID.class,id);
   @SuppressWarnings("unchecked") KafkaTemplate<String,String> failing=org.mockito.Mockito.mock(KafkaTemplate.class);
@@ -49,7 +49,7 @@ class PersistenceKafkaIT {
   assertThat(jdbc.queryForList("select event_id from outbox where aggregate_id=? order by aggregate_version",UUID.class,id)).containsExactlyElementsOf(ids);
  }
  @Test @Order(6) void twoRelayWorkersCannotOvertakeUnacknowledgedHead()throws Exception{
-  var created=credentials.create(request("workers@example.test"));UUID id=users.findById(created.getUserId()).orElseThrow().publicId;
+  var created=credentials.create(request("workers@example.test"));UUID id=users.findById(created.getUserId()).orElseThrow().getPublicId();
   new TransactionTemplate(manager).executeWithoutResult(s->{var u=users.lock(id).orElseThrow();writer.emit(u,"UserRoleChanged",Map.of("user_id",id,"old_role","ATHLETE","new_role","COACH"));});
   @SuppressWarnings("unchecked") KafkaTemplate<String,String> slow=org.mockito.Mockito.mock(KafkaTemplate.class);
   var pending=new CompletableFuture<org.springframework.kafka.support.SendResult<String,String>>();var entered=new CountDownLatch(1);
@@ -91,7 +91,7 @@ class PersistenceKafkaIT {
    values (?, ?, 'Synthetic biography', '["fitness"]', 3, '[]', '[]', ?,
     timestamp '2025-01-01 00:00:00', timestamp '2025-01-01 00:00:00')
    """,id,name,coachStatus.name());
-  return users.findById(id).orElseThrow().publicId;
+  return users.findById(id).orElseThrow().getPublicId();
  }
  @Test @Order(1) void migrationAndConcurrentDatabaseUniqueness()throws Exception{
   try(var pool=Executors.newFixedThreadPool(2)){
@@ -117,7 +117,7 @@ class PersistenceKafkaIT {
  }
  @Test @Order(4) void brokerAckThenMarkAndStableEventIds(){
   var u=credentials.create(request("relay@example.test"));
-  UUID id=users.findById(u.getUserId()).orElseThrow().publicId;
+  UUID id=users.findById(u.getUserId()).orElseThrow().getPublicId();
   var relay=new OutboxRelay(jdbc,producer,manager,new SimpleMeterRegistry());
   relay.poll();
   assertThat(jdbc.queryForObject("select count(*) from outbox where published_at is null",Long.class)).isZero();

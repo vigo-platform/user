@@ -1,4 +1,5 @@
 package ir.vigoapp.user.api;
+import lombok.RequiredArgsConstructor;
 import ir.vigoapp.user.domain.CoachApplicationStatus;
 import ir.vigoapp.user.dto.Envelope;
 import ir.vigoapp.user.dto.Requests;
@@ -12,10 +13,10 @@ import org.springframework.web.bind.annotation.*;
 import java.util.UUID;
 /** Admin review of anonymous applications. Authorization is enforced by the filter chain. */
 @RestController @RequestMapping("/api/v1/admin/coaches/applications")
+@RequiredArgsConstructor
 public class AdminCoachApplicationController {
  private static final Logger log=LoggerFactory.getLogger(AdminCoachApplicationController.class);
  private final CoachApplicationService service;
- public AdminCoachApplicationController(CoachApplicationService service) { this.service=service; }
  private UUID id(Authentication a){return UUID.fromString(a.getName());}
  @GetMapping
  public Envelope<?> list(@RequestParam(defaultValue="0") @Min(0) int page,

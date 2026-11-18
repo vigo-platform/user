@@ -1,4 +1,5 @@
 package ir.vigoapp.user.api;
+import lombok.RequiredArgsConstructor;
 import ir.vigoapp.user.dto.Envelope;
 import ir.vigoapp.user.dto.Requests;
 import ir.vigoapp.user.security.PublicSubmissionRateLimiter;
@@ -14,13 +15,11 @@ import org.springframework.web.bind.annotation.*;
  * routes: a visitor can apply here without registering, logging in or holding a token.
  */
 @RestController @RequestMapping("/api/v1/coaches/applications")
+@RequiredArgsConstructor
 public class CoachApplicationController {
  private static final Logger log=LoggerFactory.getLogger(CoachApplicationController.class);
  private final CoachApplicationService service;
  private final PublicSubmissionRateLimiter limiter;
- public CoachApplicationController(CoachApplicationService service,PublicSubmissionRateLimiter limiter) {
-  this.service=service;this.limiter=limiter;
- }
  @PostMapping @ResponseStatus(HttpStatus.CREATED)
  public Envelope<?> submit(@Valid @RequestBody Requests.Application body,HttpServletRequest request) {
   limiter.requireAllowed(clientKey(request));

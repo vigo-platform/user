@@ -1,4 +1,5 @@
 package ir.vigoapp.user.grpc;
+import lombok.RequiredArgsConstructor;
 import io.grpc.*;
 import javax.net.ssl.SSLSession;
 import java.net.InetSocketAddress;
@@ -6,13 +7,13 @@ import java.security.cert.X509Certificate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 /** The CA establishes trust; an exact URI SAN establishes Auth service identity. */
+@RequiredArgsConstructor
 public final class AuthServiceInterceptor implements ServerInterceptor {
  private static final Logger log=LoggerFactory.getLogger(AuthServiceInterceptor.class);
  private static final Metadata.Key<String> USER_AGENT=Metadata.Key.of("user-agent",Metadata.ASCII_STRING_MARSHALLER);
  static final Context.Key<ServerCall<?,?>> CALL=Context.key("user-grpc-call");
  static final Context.Key<String> CALLER_IDENTITY=Context.key("user-grpc-caller-identity");
  private final String allowedUri;private final boolean developmentPlaintext;private final String devAuthUserAgent;
- public AuthServiceInterceptor(String allowedUri,boolean developmentPlaintext,String devAuthUserAgent){this.allowedUri=allowedUri;this.developmentPlaintext=developmentPlaintext;this.devAuthUserAgent=devAuthUserAgent;}
  @Override public <ReqT,RespT> ServerCall.Listener<ReqT> interceptCall(ServerCall<ReqT,RespT> call,Metadata headers,ServerCallHandler<ReqT,RespT> next){
   if(developmentPlaintext){
    // Loopback client signatures are a development log hint only.

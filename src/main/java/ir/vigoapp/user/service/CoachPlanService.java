@@ -1,5 +1,6 @@
 package ir.vigoapp.user.service;
 
+import lombok.RequiredArgsConstructor;
 import ir.vigoapp.user.api.*;
 import ir.vigoapp.user.domain.AccountStatus;
 import ir.vigoapp.user.domain.CoachStatus;
@@ -30,14 +31,12 @@ import java.util.*;
  */
 @Service
 @Transactional
+@RequiredArgsConstructor
 public class CoachPlanService {
     private final CoachPlanRepository plans;
     private final CoachPlanIncludeRepository includes;
     private final CoachRepository coaches;
 
-    public CoachPlanService(CoachPlanRepository plans, CoachPlanIncludeRepository includes, CoachRepository coaches) {
-        this.plans = plans; this.includes = includes; this.coaches = coaches;
-    }
 
     /** Creates a plan for the authenticated coach. The coach must be approved. */
     public Map<String, Object> create(UUID coachId, Requests.Plan request) {
@@ -45,44 +44,44 @@ public class CoachPlanService {
         validate(request);
         var plan = new CoachPlan(coach);
         apply(plan, request);
-        plan.status = PlanStatus.ACTIVE;
+        plan.setStatus(PlanStatus.ACTIVE);
         plans.saveAndFlush(plan);
-        replaceIncludes(plan.id, request.includes());
+        replaceIncludes(plan.getId(), request.includes());
         return view(plan);
     }
 
     public Map<String, Object> update(UUID coachId, Long planId, Requests.Plan request) {
         validate(request);
         var plan = ownedPlan(coachId, planId, true);
-        if (plan.status == PlanStatus.ARCHIVED) throw ApiException.conflict("PLAN_ARCHIVED");
+        if (plan.getStatus() == PlanStatus.ARCHIVED) throw ApiException.conflict("PLAN_ARCHIVED");
         apply(plan, request);
-        plan.updatedAt = Instant.now();
+        plan.setUpdatedAt(Instant.now());
         plans.flush();
-        replaceIncludes(plan.id, request.includes());
+        replaceIncludes(plan.getId(), request.includes());
         return view(plan);
     }
 
     /** Soft delete: the plan leaves the marketplace, running subscriptions are untouched. */
     public void archive(UUID coachId, Long planId) {
         var plan = ownedPlan(coachId, planId, true);
-        if (plan.status == PlanStatus.ARCHIVED) throw ApiException.conflict("INVALID_STATE");
-        plan.status = PlanStatus.ARCHIVED;
-        plan.updatedAt = Instant.now();
+        if (plan.getStatus() == PlanStatus.ARCHIVED) throw ApiException.conflict("INVALID_STATE");
+        plan.setStatus(PlanStatus.ARCHIVED);
+        plan.setUpdatedAt(Instant.now());
         plans.flush();
     }
 
     public void activate(UUID coachId, Long planId) {
         var plan = ownedPlan(coachId, planId, true);
-        if (plan.status == PlanStatus.ACTIVE) throw ApiException.conflict("INVALID_STATE");
-        plan.status = PlanStatus.ACTIVE;
-        plan.updatedAt = Instant.now();
+        if (plan.getStatus() == PlanStatus.ACTIVE) throw ApiException.conflict("INVALID_STATE");
+        plan.setStatus(PlanStatus.ACTIVE);
+        plan.setUpdatedAt(Instant.now());
         plans.flush();
     }
 
     @Transactional(readOnly = true)
     public List<Map<String, Object>> own(UUID coachId) {
         return coaches.findByUser_PublicId(coachId)
-                .map(coach -> plans.findByCoachIdOrderByCreatedAtDesc(coach.userId).stream().map(this::view).toList())
+                .map(coach -> plans.findByCoachIdOrderByCreatedAtDesc(coach.getUserId()).stream().map(this::view).toList())
                 .orElseGet(List::of);
     }
 
@@ -105,7 +104,7 @@ public class CoachPlanService {
     @Transactional(readOnly = true)
     public Map<String, Object> detail(Long planId) {
         var plan = plans.findById(planId).orElseThrow(ApiException::notFound);
-        boolean visible = plan.status == PlanStatus.ACTIVE && isPublicCoach(plan.coachId);
+        boolean visible = plan.getStatus() == PlanStatus.ACTIVE && isPublicCoach(plan.getCoachId());
         if (!visible) throw ApiException.notFound();
         return view(plan);
     }
@@ -113,20 +112,20 @@ public class CoachPlanService {
     @Transactional(readOnly = true)
     public CoachPlan requirePurchasable(Long planId) {
         var plan = plans.findById(planId).orElseThrow(ApiException::notFound);
-        if (plan.status != PlanStatus.ACTIVE) throw ApiException.conflict("PLAN_ARCHIVED");
+        if (plan.getStatus() != PlanStatus.ACTIVE) throw ApiException.conflict("PLAN_ARCHIVED");
         return plan;
     }
 
     private boolean isPublicCoach(Long coachId) {
         return coaches.findByUserId(coachId)
-                .filter(c -> c.status == CoachStatus.APPROVED)
-                .filter(c -> c.user.status == AccountStatus.ACTIVE && c.user.role == Role.COACH)
+                .filter(c -> c.getStatus() == CoachStatus.APPROVED)
+                .filter(c -> c.getUser().getStatus() == AccountStatus.ACTIVE && c.getUser().getRole() == Role.COACH)
                 .isPresent();
     }
 
     private CoachProfile requireApprovedCoach(UUID coachId) {
         var coach = coaches.findByUser_PublicId(coachId).orElseThrow(ApiException::forbidden);
-        if (coach.status != CoachStatus.APPROVED || coach.user.status != AccountStatus.ACTIVE || coach.user.role != Role.COACH)
+        if (coach.getStatus() != CoachStatus.APPROVED || coach.getUser().getStatus() != AccountStatus.ACTIVE || coach.getUser().getRole() != Role.COACH)
             throw ApiException.forbidden();
         return coach;
     }
@@ -135,18 +134,18 @@ public class CoachPlanService {
     private CoachPlan ownedPlan(UUID coachId, Long planId, boolean lock) {
         var plan = (lock ? plans.lock(planId) : plans.findById(planId)).orElseThrow(ApiException::notFound);
         boolean owned = coaches.findByUser_PublicId(coachId)
-                .filter(coach -> plan.coachId.equals(coach.userId))
+                .filter(coach -> plan.getCoachId().equals(coach.getUserId()))
                 .isPresent();
         if (!owned) throw ApiException.forbidden();
         return plan;
     }
 
     private void apply(CoachPlan plan, Requests.Plan r) {
-        plan.title = r.title().strip();
-        plan.description = r.description() == null || r.description().isBlank() ? null : r.description().strip();
-        plan.priceRial = r.price();
-        plan.durationDays = r.duration_days();
-        plan.updatedAt = Instant.now();
+        plan.setTitle(r.title().strip());
+        plan.setDescription(r.description() == null || r.description().isBlank() ? null : r.description().strip());
+        plan.setPriceRial(r.price());
+        plan.setDurationDays(r.duration_days());
+        plan.setUpdatedAt(Instant.now());
     }
 
     private void replaceIncludes(Long planId, List<PlanInclude> values) {
@@ -154,7 +153,7 @@ public class CoachPlanService {
         var unique = new LinkedHashSet<>(values);
         for (var include : unique) {
             var row = new CoachPlanInclude();
-            row.planId = planId; row.include = include;
+            row.setPlanId(planId); row.setInclude(include);
             includes.save(row);
         }
         includes.flush();
@@ -167,19 +166,19 @@ public class CoachPlanService {
 
     private Map<String, Object> view(CoachPlan plan) {
         Map<String, Object> v = new LinkedHashMap<>();
-        v.put("plan_id", plan.id);
-        v.put("coach_id", plan.coachId);
-        v.put("title", plan.title);
-        v.put("description", plan.description);
-        v.put("price", plan.priceRial);
-        v.put("currency", plan.currency);
-        v.put("duration_days", plan.durationDays);
+        v.put("plan_id", plan.getId());
+        v.put("coach_id", plan.getCoachId());
+        v.put("title", plan.getTitle());
+        v.put("description", plan.getDescription());
+        v.put("price", plan.getPriceRial());
+        v.put("currency", plan.getCurrency());
+        v.put("duration_days", plan.getDurationDays());
         // Declaration order is stable and matches the documented category list.
-        v.put("includes", includes.findForPlan(plan.id).stream().map(i -> i.include)
+        v.put("includes", includes.findForPlan(plan.getId()).stream().map(i -> i.getInclude())
                 .sorted(java.util.Comparator.comparingInt(Enum::ordinal)).toList());
-        v.put("status", plan.status);
-        v.put("created_at", plan.createdAt);
-        v.put("updated_at", plan.updatedAt);
+        v.put("status", plan.getStatus());
+        v.put("created_at", plan.getCreatedAt());
+        v.put("updated_at", plan.getUpdatedAt());
         return v;
     }
 }

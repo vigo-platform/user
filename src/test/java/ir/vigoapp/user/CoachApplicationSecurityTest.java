@@ -86,9 +86,9 @@ class CoachApplicationSecurityTest {
     @BeforeEach
     void setUp() {
         var account = new UserAccount();
-        account.id = 1L;
-        account.publicId = ID;
-        account.role = Role.ADMIN;
+        account.setId(1L);
+        account.setPublicId(ID);
+        account.setRole(Role.ADMIN);
         when(users.findById(1L)).thenReturn(Optional.of(account));
         when(users.findByPublicId(ID)).thenReturn(Optional.of(account));
         when(applications.submit(any())).thenReturn(Map.of("application_id", UUID.randomUUID(),

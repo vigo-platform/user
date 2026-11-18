@@ -1,4 +1,5 @@
 package ir.vigoapp.user.api;
+import lombok.RequiredArgsConstructor;
 import ir.vigoapp.user.domain.*;
 import ir.vigoapp.user.dto.Envelope;
 import ir.vigoapp.user.dto.Requests;
@@ -13,10 +14,10 @@ import org.slf4j.LoggerFactory;
 import java.util.Map;
 import java.util.UUID;
 @RestController @RequestMapping("/api/v1")
+@RequiredArgsConstructor
 public class UserController {
  private static final Logger log=LoggerFactory.getLogger(UserController.class);
  private final ProfileService service;
- public UserController(ProfileService service){this.service=service;}
  private UUID id(Authentication a){return UUID.fromString(a.getName());}
  @GetMapping("/users/me") public Envelope<?> me(Authentication a){return Envelope.ok(service.get(id(a)));}
  @PutMapping("/users/me") public Envelope<?> update(Authentication a,@Valid @RequestBody Requests.Profile r){return Envelope.ok(service.update(id(a),r));}

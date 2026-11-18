@@ -1,4 +1,5 @@
 package ir.vigoapp.user.outbox;
+import lombok.RequiredArgsConstructor;
 import ir.vigoapp.user.entity.UserAccount;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -9,13 +10,13 @@ import tools.jackson.databind.ObjectMapper;
 import java.time.Instant;
 import java.util.*;
 @Component
+@RequiredArgsConstructor
 public class OutboxWriter {
  private static final Logger log=LoggerFactory.getLogger(OutboxWriter.class);
  private final JdbcTemplate jdbc; private final ObjectMapper json;
- public OutboxWriter(JdbcTemplate jdbc,ObjectMapper json) {this.jdbc=jdbc;this.json=json;}
  // Caller holds the aggregate user row lock (or owns a newly inserted user) in this transaction.
  public void emit(UserAccount user,String type,Map<String,Object> data) {
-  emit(user.publicId,++user.aggregateVersion,type,data);
+  emit(user.getPublicId(),user.nextAggregateVersion(),type,data);
  }
  /**
   * Emits an event for an aggregate that is not a user account (for example an

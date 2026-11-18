@@ -1,5 +1,8 @@
 package ir.vigoapp.user.entity.plan.catalog;
 
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -18,6 +21,9 @@ import java.util.Map;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
+@Getter
+@Setter
+@NoArgsConstructor
 @Entity
 @Table(name = "plan_field_definitions")
 public class PlanFieldDefinition {
@@ -25,42 +31,42 @@ public class PlanFieldDefinition {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    public Long id;
+    private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "feature_id",
             foreignKey = @ForeignKey(name = "plan_field_definitions_feature_fkey"))
-    public PlanFeatureDefinition feature;
+    private PlanFeatureDefinition feature;
 
     @Column(nullable = false, unique = true, length = 64, updatable = false)
-    public String code;
+    private String code;
 
     @Column(nullable = false, length = 100)
-    public String label;
+    private String label;
 
     @Column(name = "help_text", columnDefinition = "text")
-    public String helpText;
+    private String helpText;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "value_type", nullable = false, length = 20)
-    public ValueType valueType;
+    private ValueType valueType;
 
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "validation_rules", nullable = false, columnDefinition = "jsonb")
-    public Map<String, Object> validationRules = new LinkedHashMap<>();
+    private Map<String, Object> validationRules = new LinkedHashMap<>();
 
     @Column(name = "is_required", nullable = false)
-    public boolean required;
+    private boolean required;
 
     @Column(name = "is_active", nullable = false)
-    public boolean active = true;
+    private boolean active = true;
 
     @Column(name = "display_order", nullable = false)
-    public int displayOrder;
+    private int displayOrder;
 
     @Column(name = "created_at", nullable = false)
-    public Instant createdAt = Instant.now();
+    private Instant createdAt = Instant.now();
 
     @Column(name = "updated_at", nullable = false)
-    public Instant updatedAt = createdAt;
+    private Instant updatedAt = createdAt;
 }

@@ -1,5 +1,6 @@
 package ir.vigoapp.user.service;
 
+import lombok.Getter;
 import ir.vigoapp.user.api.ApiException;
 import ir.vigoapp.user.dto.order.CreateOrderRequest;
 import ir.vigoapp.user.dto.order.CreateOrderResponse;
@@ -28,6 +29,7 @@ import java.util.Map;
 public class OrderClient {
     /** Proposed request body; Order must confirm or amend before production use. */
 
+    @Getter
     private final boolean enabled;
     private final RestClient client;
 
@@ -51,8 +53,6 @@ public class OrderClient {
         this.client = RestClient.builder().requestFactory(requests).baseUrl(base.toString()).build();
         this.enabled = true;
     }
-
-    public boolean isEnabled() { return enabled; }
 
     /**
      * Creates an order. A transport failure is reported as 503 so a client can
