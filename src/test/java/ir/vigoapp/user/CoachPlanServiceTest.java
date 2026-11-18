@@ -1,0 +1,165 @@
+package ir.vigoapp.user;
+
+import io.zonky.test.db.postgres.embedded.EmbeddedPostgres;
+import ir.vigoapp.user.api.ApiException;
+import ir.vigoapp.user.api.Requests;
+import ir.vigoapp.user.domain.*;
+import ir.vigoapp.user.service.CoachPlanService;
+import org.flywaydb.core.Flyway;
+import org.junit.jupiter.api.*;
+import org.springframework.data.jpa.repository.support.JpaRepositoryFactory;
+import org.springframework.orm.jpa.JpaTransactionManager;
+import org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean;
+import org.springframework.orm.jpa.SharedEntityManagerCreator;
+import org.springframework.orm.jpa.vendor.HibernateJpaVendorAdapter;
+import org.springframework.transaction.support.TransactionTemplate;
+
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.EntityManagerFactory;
+import javax.sql.DataSource;
+import java.time.Instant;
+import java.util.*;
+
+import static org.assertj.core.api.Assertions.*;
+
+/** Plan ownership, activation state and public visibility on a real database. */
+class CoachPlanServiceTest {
+    static EmbeddedPostgres postgres;
+    static DataSource dataSource;
+    static EntityManagerFactory emf;
+    EntityManager em;
+    TransactionTemplate tx;
+    CoachPlanService service;
+
+    UUID coachA = UUID.randomUUID();
+    UUID coachB = UUID.randomUUID();
+
+    @BeforeAll
+    static void start() throws Exception {
+        postgres = EmbeddedPostgres.builder().setPort(0).start();
+        dataSource = postgres.getPostgresDatabase();
+        Flyway.configure().dataSource(dataSource).load().migrate();
+        var factory = new LocalContainerEntityManagerFactoryBean();
+        factory.setDataSource(dataSource);
+        factory.setPackagesToScan(UserAccount.class.getPackageName());
+        factory.setJpaVendorAdapter(new HibernateJpaVendorAdapter());
+        factory.setJpaPropertyMap(Map.of("hibernate.hbm2ddl.auto", "validate"));
+        factory.afterPropertiesSet();
+        emf = factory.getObject();
+    }
+
+    @AfterAll
+    static void stop() throws Exception { if (emf != null) emf.close(); if (postgres != null) postgres.close(); }
+
+    @BeforeEach
+    void wire() {
+        new JdbcTemplateReset().run();
+        em = SharedEntityManagerCreator.createSharedEntityManager(emf);
+        tx = new TransactionTemplate(new JpaTransactionManager(emf));
+        var factory = new JpaRepositoryFactory(em);
+        service = new CoachPlanService(factory.getRepository(CoachPlanRepository.class),
+                factory.getRepository(CoachPlanIncludeRepository.class),
+                factory.getRepository(CoachRepository.class));
+        inTx(() -> { seedCoach(coachA); seedCoach(coachB); return null; });
+    }
+
+    private class JdbcTemplateReset {
+        void run() {
+            new org.springframework.jdbc.core.JdbcTemplate(dataSource).update(
+                    "delete from plan_subscriptions; delete from coach_plan_includes; delete from coach_plans; delete from coach_profiles; delete from users");
+        }
+    }
+
+    private void seedCoach(UUID publicId) {
+        var u = new UserAccount();
+        u.publicId = publicId; u.email = publicId + "@example.test";
+        u.displayName = "Coach " + publicId; u.replacePassword("hash");
+        u.role = Role.COACH; u.emailVerified = true;
+        em.persist(u);
+        em.flush(); // @MapsId needs the generated identity before the profile is persisted.
+        var c = new CoachProfile();
+        c.user = u; c.displayName = u.displayName; c.bio = "Synthetic coach biography";
+        c.specialties = "[]"; c.status = CoachStatus.APPROVED;
+        em.persist(c);
+    }
+
+    private <T> T inTx(java.util.function.Supplier<T> work) { return tx.execute(s -> work.get()); }
+
+    private static Requests.Plan plan(String title, long price, PlanInclude... includes) {
+        return new Requests.Plan(title, "Plan description", price, 30, List.of(includes));
+    }
+
+    @Test
+    void coachCreatesAndListsOnlyOwnPlans() {
+        inTx(() -> { service.create(coachA, plan("A plan", 100000, PlanInclude.WORKOUT)); return null; });
+        inTx(() -> { service.create(coachB, plan("B plan", 200000, PlanInclude.NUTRITION)); return null; });
+        var a = inTx(() -> service.own(coachA));
+        var b = inTx(() -> service.own(coachB));
+        assertThat(a).extracting(m -> m.get("title")).containsExactly("A plan");
+        assertThat(b).extracting(m -> m.get("title")).containsExactly("B plan");
+        assertThat(new ArrayList<>(List.of(PlanInclude.class)).isEmpty()).isFalse();
+        assertThat(List.of(PlanInclude.WORKOUT)).isEqualTo(a.get(0).get("includes"));
+    }
+
+    @Test
+    void combinedAndSingleCategoriesAreJustDifferentIncludes() {
+        var combined = inTx(() -> service.create(coachA, plan("Combined", 300000,
+                PlanInclude.WORKOUT, PlanInclude.NUTRITION)));
+        assertThat(List.of(PlanInclude.WORKOUT, PlanInclude.NUTRITION)).isEqualTo(combined.get("includes"));
+    }
+
+    @Test
+    void anotherCoachCannotEditArchiveOrActivateSomeoneElsesPlan() {
+        UUID planId = (UUID) inTx(() -> service.create(coachA, plan("Mine", 100000, PlanInclude.WORKOUT))).get("plan_id");
+        assertThatThrownBy(() -> inTx(() -> service.update(coachB, planId, plan("Hijack", 100000, PlanInclude.WORKOUT))))
+                .isInstanceOfSatisfying(ApiException.class, e -> assertThat(e.status).isEqualTo(403));
+        assertThatThrownBy(() -> inTx(() -> { service.archive(coachB, planId); return null; }))
+                .isInstanceOfSatisfying(ApiException.class, e -> assertThat(e.status).isEqualTo(403));
+        assertThatThrownBy(() -> inTx(() -> { service.activate(coachB, planId); return null; }))
+                .isInstanceOfSatisfying(ApiException.class, e -> assertThat(e.status).isEqualTo(403));
+    }
+
+    @Test
+    void archivedPlanLeavesMarketplaceAndCannotBeEdited() {
+        UUID planId = (UUID) inTx(() -> service.create(coachA, plan("Season", 100000, PlanInclude.WORKOUT))).get("plan_id");
+        assertThat(inTx(() -> service.marketplace(0, 20, null)).content()).hasSize(1);
+        inTx(() -> { service.archive(coachA, planId); return null; });
+        assertThat(inTx(() -> service.marketplace(0, 20, null)).content()).isEmpty();
+        assertThatThrownBy(() -> inTx(() -> service.update(coachA, planId, plan("Season 2", 100000, PlanInclude.WORKOUT))))
+                .isInstanceOfSatisfying(ApiException.class, e -> assertThat(e.code).isEqualTo("PLAN_ARCHIVED"));
+        assertThatThrownBy(() -> inTx(() -> { service.archive(coachA, planId); return null; }))
+                .isInstanceOfSatisfying(ApiException.class, e -> assertThat(e.status).isEqualTo(409));
+    }
+
+    @Test
+    void reactivatingRestoresMarketplaceVisibility() {
+        UUID planId = (UUID) inTx(() -> service.create(coachA, plan("Season", 100000, PlanInclude.WORKOUT))).get("plan_id");
+        inTx(() -> { service.archive(coachA, planId); return null; });
+        inTx(() -> { service.activate(coachA, planId); return null; });
+        assertThat(inTx(() -> service.marketplace(0, 20, null)).content()).hasSize(1);
+        assertThat(inTx(() -> service.detail(planId))).containsEntry("status", PlanStatus.ACTIVE);
+    }
+
+    @Test
+    void unapprovedCoachCannotCreatePlans() {
+        UUID pending = UUID.randomUUID();
+        inTx(() -> {
+            var u = new UserAccount();
+            u.publicId = pending; u.email = "pending@example.test"; u.displayName = "Pending";
+            u.replacePassword("hash"); u.role = Role.ATHLETE; u.emailVerified = true;
+            em.persist(u);
+            em.flush();
+            return null;
+        });
+        assertThatThrownBy(() -> inTx(() -> service.create(pending, plan("Nope", 100000, PlanInclude.WORKOUT))))
+                .isInstanceOfSatisfying(ApiException.class, e -> assertThat(e.status).isEqualTo(403));
+    }
+
+    @Test
+    void detailOfArchivedPlanIsNotFoundForCustomers() {
+        UUID planId = (UUID) inTx(() -> service.create(coachA, plan("Season", 100000, PlanInclude.WORKOUT))).get("plan_id");
+        inTx(() -> { service.archive(coachA, planId); return null; });
+        assertThatThrownBy(() -> inTx(() -> service.detail(planId)))
+                .isInstanceOfSatisfying(ApiException.class, e -> assertThat(e.status).isEqualTo(404));
+    }
+}

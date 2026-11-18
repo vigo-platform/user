@@ -28,9 +28,23 @@ public final class Views {
   v.put("reviewed_at",a.reviewedAt);return v;
  }
  /** Full review view. Applicant contact details are admin-only. */
- public static Map<String,Object> coachApplication(CoachApplication a,Instant invitationExpiresAt,ObjectMapper json) {
+ public static Map<String,Object> coachApplication(CoachApplication a,Instant invitationExpiresAt,
+   List<CoachCertificate> certificateRows,List<CoachExperience> experienceRows,ObjectMapper json) {
   Map<String,Object> v=new LinkedHashMap<>();
-  v.put("application_id",a.id);v.put("full_name",a.fullName);v.put("email",a.email);v.put("phone",a.phone);
+  v.put("application_id",a.id);v.put("full_name",a.fullName);
+  v.put("first_name",a.firstName);v.put("last_name",a.lastName);
+  v.put("email",a.email);v.put("phone",a.phone);
+  // Only the public image asset id is exposed; certificates stay private references.
+  v.put("profile_image_file_id",a.profileImageFileId);
+  v.put("certificates",certificateRows.stream().map(c->{
+   Map<String,Object> row=new LinkedHashMap<>();
+   row.put("certificate_id",c.id);row.put("category",c.category);row.put("title",c.title);
+   row.put("issuer",c.issuer);row.put("field_of_study",c.fieldOfStudy);row.put("degree",c.degree);
+   row.put("file_id",c.fileId);return row;}).toList());
+  v.put("experiences",experienceRows.stream().map(e->{
+   Map<String,Object> row=new LinkedHashMap<>();
+   row.put("experience_id",e.id);row.put("title",e.title);row.put("organization",e.organization);
+   row.put("description",e.description);row.put("duration_months",e.durationMonths);return row;}).toList());
   v.put("headline",a.headline);v.put("bio",a.bio);v.put("specialties",json.readTree(a.specialties));
   v.put("experience_years",a.experienceYears);v.put("certifications",json.readTree(a.certifications));
   v.put("instagram_handle",a.instagramHandle);v.put("locale",a.locale);v.put("status",a.status);

@@ -54,7 +54,7 @@ class CoachApplicationSecurityTest {
     static final String ISSUER = "https://auth.example.test";
     static final UUID ID = UUID.fromString("22222222-2222-4222-8222-222222222222");
     static final KeyPair KEY = key();
-    static final String BODY = "{\"full_name\":\"Sara Coach\",\"email\":\"sara@example.test\","
+    static final String BODY = "{\"first_name\":\"Sara\",\"last_name\":\"Coach\",\"email\":\"sara@example.test\","
             + "\"bio\":\"Fifteen years coaching strength athletes.\",\"specialties\":[\"Strength\"],"
             + "\"experience_years\":12}";
 
@@ -127,7 +127,7 @@ class CoachApplicationSecurityTest {
     @Test
     void invalidSubmissionIsRejectedBeforeTheService() throws Exception {
         mvc.perform(post("/api/v1/coaches/applications").contentType("application/json")
-                        .content("{\"full_name\":\"S\",\"email\":\"not-an-email\",\"bio\":\"short\","
+                        .content("{\"first_name\":\"S\",\"email\":\"not-an-email\",\"bio\":\"short\","
                                 + "\"specialties\":[],\"experience_years\":99}"))
                 .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
     }

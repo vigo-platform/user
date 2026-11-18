@@ -26,18 +26,22 @@ public class CoachApplicationService {
  private final CoachApplicationRepository applications;
  private final CoachApplicationTokenRepository tokens;
  private final CoachInvitationRepository invitations;
+ private final CoachCertificateRepository certificates;
+ private final CoachExperienceRepository experiences;
  private final UserRepository users;
  private final OutboxWriter events;
  private final ObjectMapper json;
  private final Duration invitationTtl;
  private final Duration lookupTtl;
  public CoachApplicationService(CoachApplicationRepository applications,CoachApplicationTokenRepository tokens,
-   CoachInvitationRepository invitations,UserRepository users,OutboxWriter events,ObjectMapper json,
+   CoachInvitationRepository invitations,CoachCertificateRepository certificates,CoachExperienceRepository experiences,
+   UserRepository users,OutboxWriter events,ObjectMapper json,
    @Value("${app.coach-applications.invitation-ttl:P30D}") Duration invitationTtl,
    @Value("${app.coach-applications.lookup-ttl:P90D}") Duration lookupTtl) {
   if(invitationTtl.isNegative()||invitationTtl.isZero())throw new IllegalArgumentException("Invitation TTL must be positive");
   if(lookupTtl.isNegative()||lookupTtl.isZero())throw new IllegalArgumentException("Lookup TTL must be positive");
-  this.applications=applications;this.tokens=tokens;this.invitations=invitations;this.users=users;this.events=events;this.json=json;
+  this.applications=applications;this.tokens=tokens;this.invitations=invitations;this.certificates=certificates;
+  this.experiences=experiences;this.users=users;this.events=events;this.json=json;
   this.invitationTtl=invitationTtl;this.lookupTtl=lookupTtl;
  }
  /**
@@ -54,13 +58,18 @@ public class CoachApplicationService {
   applications.lockEmailForSubmission(email);
   var pending=applications.findByEmailIgnoreCaseAndStatus(email,CoachApplicationStatus.PENDING);
   if(pending.isPresent())return summary(pending.get(),issueLookupToken(pending.get()));
+  String firstName=Identifiers.name(r.first_name());
+  String lastName=Identifiers.name(r.last_name());
   var a=new CoachApplication();
-  a.fullName=Identifiers.name(r.full_name());
+  a.firstName=firstName;a.lastName=lastName;
+  a.fullName=(firstName+" "+lastName).strip();
+  a.profileImageFileId=uuidOrNull(r.profile_image_file_id());
   a.email=email;a.phone=phone;a.headline=blankToNull(r.headline());
   a.bio=r.bio().strip();
   a.specialties=json.writeValueAsString(r.specialties().stream().map(String::strip).toList());
   a.experienceYears=r.experience_years();
-  a.certifications=json.writeValueAsString(r.certifications()==null?List.of():r.certifications());
+  // Legacy column kept for the existing contract; structured rows are authoritative.
+  a.certifications=json.writeValueAsString(r.certificates()==null?List.of():r.certificates());
   a.instagramHandle=blankToNull(r.instagram_handle());
   a.locale=r.locale()==null?"fa":r.locale();
   a.status=CoachApplicationStatus.PENDING;
@@ -70,6 +79,8 @@ public class CoachApplicationService {
    // The unique index is a backstop; the advisory lock should make this unreachable.
    throw ApiException.conflict("APPLICATION_ALREADY_PENDING");
   }
+  storeCertificates(a,r.certificates());
+  storeExperiences(a,r.experiences());
   String lookupToken=issueLookupToken(a);
   Map<String,Object> data=new LinkedHashMap<>();
   data.put("application_id",a.id);data.put("full_name",a.fullName);data.put("email",a.email);
@@ -91,12 +102,12 @@ public class CoachApplicationService {
  public Views.Paged<Map<String,Object>> list(int page,int size,CoachApplicationStatus status) {
   var pageable=PageRequest.of(page,size,Sort.by("createdAt").descending().and(Sort.by("id")));
   var result=status==null?applications.findAll(pageable):applications.findAllByStatus(status,pageable);
-  return Views.page(result,a->Views.coachApplication(a,invitationExpiry(a.id),json));
+  return Views.page(result,a->view(a,invitationExpiry(a.id)));
  }
  @Transactional(readOnly=true)
  public Map<String,Object> get(UUID id) {
   var a=applications.findById(id).orElseThrow(ApiException::notFound);
-  return Views.coachApplication(a,invitationExpiry(id),json);
+  return view(a,invitationExpiry(id));
  }
  public Map<String,Object> approve(UUID actor,UUID id) {
   var a=applications.lock(id).orElseThrow(ApiException::notFound);
@@ -123,7 +134,7 @@ public class CoachApplicationService {
   log.atInfo().addKeyValue("event","coach_application_approved").addKeyValue("result","STAGED")
    .addKeyValue("application_id",a.id).addKeyValue("actor_public_id",actor)
    .log("Coach application approved and a registration invitation issued.");
-  return Views.coachApplication(a,invitation.expiresAt,json);
+  return view(a,invitation.expiresAt);
  }
  public Map<String,Object> reject(UUID actor,UUID id,String reason) {
   var a=applications.lock(id).orElseThrow(ApiException::notFound);
@@ -138,8 +149,51 @@ public class CoachApplicationService {
   events.emit(a.id,a.aggregateVersion,"CoachApplicationRejected",data);
   log.atInfo().addKeyValue("event","coach_application_rejected").addKeyValue("result","STAGED")
    .addKeyValue("application_id",a.id).addKeyValue("actor_public_id",actor).log("Coach application rejected.");
-  return Views.coachApplication(a,null,json);
+  return view(a,null);
  }
+ private void storeCertificates(CoachApplication a,List<Requests.Certificate> rows) {
+  if(rows==null)return;
+  for(int i=0;i<rows.size();i++) {
+   var source=rows.get(i);
+   var row=new CoachCertificate();
+   row.applicationId=a.id;
+   row.category=CoachCertificate.Category.valueOf(source.category().name());
+   row.title=source.title().strip();
+   row.issuer=blankToNull(source.issuer());
+   if(source.category()==Requests.CertificateCategory.UNIVERSITY) {
+    row.fieldOfStudy=blankToNull(source.field_of_study());
+    row.degree=blankToNull(source.degree());
+   } else if(source.field_of_study()!=null||source.degree()!=null) {
+    // Reject academic fields on unrelated categories instead of silently dropping them.
+    throw new IllegalArgumentException("field_of_study and degree apply only to UNIVERSITY certificates");
+   }
+   row.fileId=uuidOrNull(source.file_id());
+   if(row.fileId==null)throw new IllegalArgumentException("A certificate document is required");
+   row.position=i;
+   certificates.save(row);
+  }
+ }
+ private void storeExperiences(CoachApplication a,List<Requests.Experience> rows) {
+  if(rows==null)return;
+  for(int i=0;i<rows.size();i++) {
+   var source=rows.get(i);
+   var row=new CoachExperience();
+   row.applicationId=a.id;
+   row.title=source.title().strip();
+   row.organization=blankToNull(source.organization());
+   row.description=blankToNull(source.description());
+   row.durationMonths=source.duration_months();
+   row.position=i;
+   experiences.save(row);
+  }
+ }
+ /** Loads the structured children so detail and list responses stay consistent. */
+ private Map<String,Object> view(CoachApplication a,Instant invitationExpiresAt) {
+  return Views.coachApplication(a,invitationExpiresAt,
+   certificates.findByApplicationIdOrderByPosition(a.id),
+   experiences.findByApplicationIdOrderByPosition(a.id),json);
+ }
+ private static UUID uuidOrNull(String value) { return value==null||value.isBlank()?null:UUID.fromString(value); }
  private String issueLookupToken(CoachApplication a) {
   String token=OpaqueTokens.newToken();
   var row=new CoachApplicationToken();
