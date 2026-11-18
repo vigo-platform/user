@@ -230,6 +230,22 @@ Spring does **not** automatically import `.env`. Copy `.env.example` to untracke
 - Host process: export variables, set explicitly selected gRPC mode below, then `./mvnw spring-boot:run`. No app/services were started for this implementation beyond synthetic tests.
 - Host logging uses the Auth terminal format and sends JSON to Vector at `localhost:5044`. Set `LOGGING_VECTOR_DESTINATION` to override the address or set it to an empty value for console-only output. The Docker image writes JSON to stdout for Vector's `logging=true` collection. Vector forwards both sources to Elasticsearch.
 
+### HTTP client IP behind Nginx
+
+Like Auth, User uses Spring's `framework` forwarded-header strategy. Keep port `8081` on loopback and route external HTTP requests through the trusted Nginx proxy. In the existing User proxy location, use the same header handling as Auth. If Nginx is behind Cloudflare, reuse Auth's trusted real-IP configuration so `$remote_addr` contains the client address.
+
+```nginx
+proxy_set_header Forwarded "";
+proxy_set_header X-Forwarded-For $remote_addr;
+proxy_set_header X-Forwarded-Host $host;
+proxy_set_header X-Forwarded-Proto $scheme;
+proxy_set_header X-Forwarded-Port "";
+proxy_set_header X-Forwarded-Prefix "";
+proxy_set_header X-Forwarded-Ssl "";
+```
+
+Test with an `ATHLETE` token and `GET /api/v1/users` through the public URL. The `access_denied` event for the `403` should record the forwarded client address in `ip_address`. A direct request to `127.0.0.1:8081` from the server records the connection peer, which can be the Docker bridge address. Set `SERVER_FORWARD_HEADERS_STRATEGY=none` for a deployment that accepts direct, untrusted HTTP requests.
+
 ### gRPC transport / service authentication
 
 Default is **fail closed**: without valid TLS certificate/key/trust and exact Auth URI identity, server startup fails; plaintext flag defaults false. All eight RPCs are Auth-only. Production uses grpc-netty-shaded TLS, REQUIRED client certificate, CA chain verification, certificate validity, and exact URI SAN `GRPC_AUTH_SERVICE_IDENTITY` (example `spiffe://vigo.local/service/auth`). No CN fallback, metadata/header trust, reflection endpoint or anonymous health RPC. Configure:
