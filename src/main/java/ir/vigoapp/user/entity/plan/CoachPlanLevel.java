@@ -2,6 +2,7 @@ package ir.vigoapp.user.entity.plan;
 
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.RequiredArgsConstructor;
 import lombok.Setter;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -23,7 +24,16 @@ import java.io.Serializable;
 @Table(name = "coach_plan_levels")
 @IdClass(CoachPlanLevel.Key.class)
 public class CoachPlanLevel {
-    public enum Level { BEGINNER, INTERMEDIATE, ADVANCED, PROFESSIONAL }
+    @Getter
+    @RequiredArgsConstructor
+    public enum Level {
+        BEGINNER("مبتدی"),
+        INTERMEDIATE("متوسط"),
+        ADVANCED("پیشرفته"),
+        PROFESSIONAL("حرفه‌ای");
+
+        private final String label;
+    }
 
     @Id
     @ManyToOne(fetch = FetchType.LAZY, optional = false)

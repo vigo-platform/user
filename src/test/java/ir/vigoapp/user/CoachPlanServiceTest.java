@@ -11,7 +11,6 @@ import ir.vigoapp.user.entity.plan.catalog.PlanIncludeOption;
 import ir.vigoapp.user.repository.CoachPlanIncludeRepository;
 import ir.vigoapp.user.repository.CoachPlanRepository;
 import ir.vigoapp.user.repository.CoachRepository;
-import ir.vigoapp.user.repository.PlanIncludeOptionRepository;
 import ir.vigoapp.user.service.CoachPlanService;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.*;
@@ -25,7 +24,6 @@ import org.springframework.transaction.support.TransactionTemplate;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityManagerFactory;
 import javax.sql.DataSource;
-import java.time.Instant;
 import java.util.*;
 
 import static org.assertj.core.api.Assertions.*;
@@ -67,8 +65,7 @@ class CoachPlanServiceTest {
         var factory = new JpaRepositoryFactory(em);
         service = new CoachPlanService(factory.getRepository(CoachPlanRepository.class),
                 factory.getRepository(CoachPlanIncludeRepository.class),
-                factory.getRepository(CoachRepository.class),
-                factory.getRepository(PlanIncludeOptionRepository.class));
+                factory.getRepository(CoachRepository.class));
         inTx(() -> { seedCoach(coachA); seedCoach(coachB); return null; });
     }
 

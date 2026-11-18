@@ -5,6 +5,13 @@ import lombok.Builder;
 import java.util.List;
 
 @Builder
-public record CreatePlanFormOptions(List<IncludeOption> include_options) {
-    public record IncludeOption(Long id, String code, String label, int display_order) {}
+public record CreatePlanFormOptions(
+        List<Item> includeOptions,
+        List<LevelOption> levels,
+        List<Item> generalFields,
+        List<Item> features
+) {
+    public record Item(long id, String code, String label) {}
+
+    public record LevelOption(String code, String label) {}
 }

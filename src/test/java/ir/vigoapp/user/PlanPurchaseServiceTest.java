@@ -11,7 +11,6 @@ import ir.vigoapp.user.dto.Requests;
 import ir.vigoapp.user.repository.CoachPlanIncludeRepository;
 import ir.vigoapp.user.repository.CoachPlanRepository;
 import ir.vigoapp.user.repository.CoachRepository;
-import ir.vigoapp.user.repository.PlanIncludeOptionRepository;
 import ir.vigoapp.user.repository.PlanSubscriptionRepository;
 import ir.vigoapp.user.repository.UserRepository;
 import ir.vigoapp.user.service.CoachPlanService;
@@ -76,8 +75,7 @@ class PlanPurchaseServiceTest {
         var factory = new JpaRepositoryFactory(em);
         planService = new CoachPlanService(factory.getRepository(CoachPlanRepository.class),
                 factory.getRepository(CoachPlanIncludeRepository.class),
-                factory.getRepository(CoachRepository.class),
-                factory.getRepository(PlanIncludeOptionRepository.class));
+                factory.getRepository(CoachRepository.class));
         orders = mock(OrderClient.class);
         purchases = new PlanPurchaseService(planService, factory.getRepository(PlanSubscriptionRepository.class),
                 orders, new JdbcTemplate(dataSource), factory.getRepository(UserRepository.class));

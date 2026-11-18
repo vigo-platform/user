@@ -15,7 +15,6 @@ import ir.vigoapp.user.entity.plan.catalog.PlanIncludeOption;
 import ir.vigoapp.user.repository.CoachPlanIncludeRepository;
 import ir.vigoapp.user.repository.CoachPlanRepository;
 import ir.vigoapp.user.repository.CoachRepository;
-import ir.vigoapp.user.repository.PlanIncludeOptionRepository;
 import org.springframework.data.domain.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -37,7 +36,6 @@ public class CoachPlanService {
     private final CoachPlanRepository plans;
     private final CoachPlanIncludeRepository includes;
     private final CoachRepository coaches;
-    private final PlanIncludeOptionRepository includeOptions;
 
 
     /** Creates a plan for the authenticated coach. The coach must be approved. */
@@ -155,7 +153,7 @@ public class CoachPlanService {
 
     private List<PlanIncludeOption> resolveIncludes(List<String> codes, Set<String> alreadySelected) {
         var uniqueCodes = new HashSet<>(codes);
-        var options = includeOptions.findByCodeIn(uniqueCodes);
+        var options = includes.findOptionsByCodeIn(uniqueCodes);
         if (options.size() != uniqueCodes.size()) {
             throw new ApiException(400, "VALIDATION_FAILED",
                     "An included service is unknown", "یکی از خدمات انتخاب‌شده ناشناخته است");
