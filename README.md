@@ -27,6 +27,67 @@ Java 21, Spring Boot **4.1.2**, Maven wrapper 3.9.16 copied from API Gateway. Gr
 - `GET /api/v1/admin/coaches`, `GET /api/v1/admin/coaches/{coach_id}`, `POST /api/v1/admin/coaches/{coach_id}/approve`, `POST .../reject` — ADMIN.
 - Actuator runs on a separate management server. `MANAGEMENT_PORT` defaults to **8082** and `MANAGEMENT_ADDRESS` defaults to `127.0.0.1`. Compose binds the management server to `0.0.0.0` inside the container so Prometheus on the shared network can scrape `user:8082/actuator/prometheus`. Health shows the aggregate status. Readiness checks the readiness state, database, and gRPC server. Liveness checks the liveness state. Docker checks `/actuator/health` on the configured management port. The `logging: "true"` label enables the shared Vector collector.
 
+### Anonymous coach applications
+
+A visitor can apply without registering, logging in or holding a token. A submission
+creates an application record only: **no user account exists and no role is granted**,
+either at submission or at approval.
+
+| Method | Path | Access |
+|---|---|---|
+| `POST` | `/api/v1/coaches/applications` | anonymous |
+| `GET` | `/api/v1/coaches/applications/{lookup_token}` | anonymous, opaque token |
+| `GET` | `/api/v1/admin/coaches/applications` | ADMIN |
+| `GET` | `/api/v1/admin/coaches/applications/{application_id}` | ADMIN |
+| `POST` | `/api/v1/admin/coaches/applications/{application_id}/approve` | ADMIN |
+| `POST` | `/api/v1/admin/coaches/applications/{application_id}/reject` | ADMIN |
+
+Lifecycle:
+
+```text
+submit   -> PENDING          no account, no invitation, CoachApplicationSubmitted
+approve  -> APPROVED         invitation issued (single use, 30 days, bound to email)
+                            CoachApplicationApproved
+register -> Auth verifies the email OTP, then calls gRPC CreateUser
+         -> User finds the active invitation for that email, creates the account
+            with role COACH plus an APPROVED coach profile, and consumes it once
+reject   -> REJECTED         no invitation is ever issued; CoachApplicationRejected
+```
+
+Rules enforced in `CoachApplicationService` and `CredentialService`:
+
+- An invitation is the only path to COACH, and only a registration that proves the
+  invited address can consume it. Auth supplies the identifier from its verified
+  grant, never from a request body, so a different email cannot redeem it.
+- Approving an address that already has an account returns `409 EMAIL_ALREADY_REGISTERED`
+  instead of silently promoting an existing user; the admin can reject instead.
+- Repeated approval or rejection returns `409 INVALID_STATE`.
+- A rejected application never receives an invitation.
+- Expired invitations grant nothing; registration proceeds as a normal ATHLETE.
+- `POST /api/v1/coaches/me/profile` still exists for an authenticated athlete and is
+  a different operation (profile creation), not a competing implementation.
+
+`V3__coach_applications.sql` adds `coach_applications`,
+`coach_application_tokens` (SHA-256 digests only) and `coach_invitations`. A partial
+unique index permits one pending application per email; an advisory transaction lock
+serialises concurrent submissions so the duplicate response stays consistent.
+Tokens and invitation secrets are 256-bit random values and are never stored in clear.
+
+**Enumeration trade-off.** A duplicate submission returns the same `201` shape and a
+new lookup token for the existing pending application, so a legitimate applicant who
+lost their token can still check status. The only information a third party gains by
+submitting a known address is that a pending application exists — never name, phone or
+review notes — and the endpoint is rate limited per client address (default 5 per 15
+minutes, in-process, so it applies per replica). Once email delivery exists, the token
+should move to the email and this response should become a bare `202`.
+
+Events go to the existing `user.events` topic through the existing outbox:
+`CoachApplicationSubmitted`, `CoachApplicationApproved`, `CoachApplicationRejected`.
+The approved payload carries `invitation_token` and `invitation_expires_at` so a future
+notification bridge can send the invitation link without a User→Notification call.
+The Notification Service and its contract were **not modified**; it currently accepts
+only `producer=auth-service` OTP commands, so coach emails need a future bridge.
+
 Static `/me` matchers precede UUID routes. The coach list and individual public coach profiles are accessible without authentication via **GET**. Unimplemented routes/methods are denied by default. JSON uses snake_case and bilingual English/Persian envelopes; actuator endpoints intentionally use their standard formats. User/coach pagination is deterministic, size 1–100, page >=0. Approval/rejection only from PENDING; editing REJECTED re-submits to PENDING, approved edits apply immediately. `min_plan_price=null` and `active_athletes_count=0` are placeholders, not a plan/subscription backend.
 
 ## Contract decisions / intentional overrides
@@ -69,6 +130,61 @@ mapping and the V1→V2 upgrade can be exercised without Docker. They create and
 their own isolated database and do not contact the development/production database.
 The first run downloads platform-specific PostgreSQL test binaries. Existing Kafka
 Testcontainers tests still require an already-running Docker engine.
+
+### Frontend integration (documented only — no frontend change in this task)
+
+The public form needs no session, cookie or token. It must **not** be placed behind the
+authenticated app shell, because the whole point is that a visitor can apply before
+registering.
+
+```http
+POST /api/v1/coaches/applications
+Content-Type: application/json
+
+{
+  "full_name": "Sara Ahmadi",
+  "email": "sara@example.com",
+  "phone": "+989121234567",
+  "headline": "Strength coach",
+  "bio": "Fifteen years coaching strength athletes.",
+  "specialties": ["Strength"],
+  "experience_years": 12,
+  "certifications": [{ "title": "NSCA-CSCS", "issuer": "NSCA", "year": 2019 }],
+  "instagram_handle": "sara.coach",
+  "locale": "fa"
+}
+```
+
+Success is `201` with the standard envelope:
+
+```json
+{
+  "success": true,
+  "code": "SUCCESS",
+  "message": "Operation successful",
+  "message_fa": "عملیات موفق بود",
+  "data": {
+    "application_id": "…",
+    "status": "PENDING",
+    "lookup_token": "…43 characters…",
+    "submitted_at": "2026-11-18T08:00:00Z"
+  },
+  "timestamp": "2026-11-18T08:00:00Z"
+}
+```
+
+- `400 VALIDATION_FAILED` carries `data[]` of `{field, code, message, message_fa}`.
+- `429 RATE_LIMITED` means the client should back off; show a retry message.
+- Show a neutral confirmation ("we received your application") for both new and
+  duplicate submissions; do not imply that submitting created an account.
+- The status page calls `GET /api/v1/coaches/applications/{lookup_token}`, which returns
+  only `application_id`, `status`, `submitted_at` and `reviewed_at`.
+- Store `lookup_token` locally (for example `sessionStorage`) if the applicant should be
+  able to check status later in the same browser; there is no recovery by email yet.
+
+The admin screen is a normal ADMIN-authenticated page calling the four
+`/api/v1/admin/coaches/applications` routes; the list accepts `page`, `size` and
+`status`, and approve/reject require `{ "reason": "…" }` for rejection.
 
 ## Build and tests
 

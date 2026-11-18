@@ -11,8 +11,11 @@ import io.grpc.Status;
 @Service @Transactional
 public class CredentialService {
  private final UserRepository users; private final OutboxWriter events; private final Duration maxAge;
- public CredentialService(UserRepository users,OutboxWriter events,@Value("${app.credentials-max-age:PT0S}") Duration maxAge){
+ private final CoachInvitationRepository invitations; private final CoachApplicationRepository applications; private final CoachRepository coaches;
+ public CredentialService(UserRepository users,OutboxWriter events,@Value("${app.credentials-max-age:PT0S}") Duration maxAge,
+   CoachInvitationRepository invitations,CoachApplicationRepository applications,CoachRepository coaches){
   if(maxAge.isNegative())throw new IllegalArgumentException("Credential max age cannot be negative");this.users=users;this.events=events;this.maxAge=maxAge;
+  this.invitations=invitations;this.applications=applications;this.coaches=coaches;
  }
  public UserAuthInfo byId(long id){Identifiers.id(id);return info(users.findById(id).orElseThrow(()->Status.NOT_FOUND.asRuntimeException()));}
  public UserLoginInfoResponse loginById(long id){Identifiers.id(id);return login(users.findById(id));}
@@ -30,8 +33,23 @@ public class CredentialService {
   // Phone verification is not attested by this contract and remains false.
   u.emailVerified=email!=null;
   u.phoneVerified=false;
-  // Role, status and credential version are server-assigned defaults.
+  // Role, status and credential version are server-assigned defaults. A pending
+  // coach invitation matched to this verified email is the only way this call
+  // can create a COACH instead; the invitation is consumed exactly once.
+  var invitation=email==null?Optional.<CoachInvitation>empty()
+    :invitations.lockActiveByEmail(email,Instant.now());
+  invitation.ifPresent(i->u.role=Role.COACH);
   users.saveAndFlush(u);
+  invitation.ifPresent(i->{
+   i.consumedAt=Instant.now();i.consumedUserId=u.id;
+   var application=applications.findById(i.applicationId).orElse(null);
+   if(application!=null) {
+    var c=new CoachProfile();c.user=u;c.displayName=application.fullName;c.headline=application.headline;
+    c.bio=application.bio;c.specialties=application.specialties;c.experienceYears=application.experienceYears;
+    c.certifications=application.certifications;c.instagramHandle=application.instagramHandle;
+    c.resultImageUrls="[]";c.status=CoachStatus.APPROVED;coaches.saveAndFlush(c);
+   }
+  });
   Map<String,Object> data=new LinkedHashMap<>();data.put("user_id",u.publicId);data.put("email",email);data.put("phone",phone);data.put("display_name",u.displayName);data.put("role",u.role);data.put("status",u.status);
   events.emit(u,"UserRegistered",data);return info(u);
  }

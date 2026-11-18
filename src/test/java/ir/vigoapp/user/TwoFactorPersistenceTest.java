@@ -50,7 +50,10 @@ class TwoFactorPersistenceTest {
             try {
                 entityManager = factory.getObject().createEntityManager();
                 var repository = new JpaRepositoryFactory(entityManager).getRepository(UserRepository.class);
-                var service = new CredentialService(repository, mock(OutboxWriter.class), Duration.ZERO);
+                var service = new CredentialService(repository, mock(OutboxWriter.class), Duration.ZERO,
+                        new org.springframework.data.jpa.repository.support.JpaRepositoryFactory(entityManager).getRepository(ir.vigoapp.user.domain.CoachInvitationRepository.class),
+                        new org.springframework.data.jpa.repository.support.JpaRepositoryFactory(entityManager).getRepository(ir.vigoapp.user.domain.CoachApplicationRepository.class),
+                        new org.springframework.data.jpa.repository.support.JpaRepositoryFactory(entityManager).getRepository(ir.vigoapp.user.domain.CoachRepository.class));
                 assertThat(service.byId(id).getTwoFactorEnabled()).isFalse();
 
                 // Force a DB read after each change; the mapper must not hard-code false

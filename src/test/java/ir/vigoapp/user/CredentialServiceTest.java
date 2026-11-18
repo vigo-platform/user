@@ -11,7 +11,8 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 class CredentialServiceTest {
  UserRepository users=mock(UserRepository.class);OutboxWriter events=mock(OutboxWriter.class);
- CredentialService service=new CredentialService(users,events,Duration.ZERO);
+ CoachInvitationRepository invitations=mock(CoachInvitationRepository.class);CoachApplicationRepository applications=mock(CoachApplicationRepository.class);CoachRepository coaches=mock(CoachRepository.class);
+ CredentialService service=new CredentialService(users,events,Duration.ZERO,invitations,applications,coaches);
  @Test void canonicalIdentifiersAndInvalidInputs(){
   assertThat(Identifiers.email(" Alice@EXAMPLE.COM ")).isEqualTo("alice@example.com");
   assertThat(Identifiers.phone(" +989121234567 ")).isEqualTo("+989121234567");
@@ -45,7 +46,7 @@ class CredentialServiceTest {
  }
  @Test void accountResponsesPopulateExpirationAndNumericId(){
   var u=new UserAccount();u.id=5L;u.email="a@example.com";u.displayName="A B";u.replacePassword("unchanged");u.credentialsChangedAt=Instant.now().minus(Duration.ofDays(100));
-  service=new CredentialService(users,events,Duration.ofDays(90));when(users.findById(5L)).thenReturn(Optional.of(u));when(users.findByEmail(u.email)).thenReturn(Optional.of(u));
+  service=new CredentialService(users,events,Duration.ofDays(90),invitations,applications,coaches);when(users.findById(5L)).thenReturn(Optional.of(u));when(users.findByEmail(u.email)).thenReturn(Optional.of(u));
   var login=service.loginByEmail("A@example.com");assertThat(login.getPasswordHash()).isEqualTo("unchanged");assertThat(login.getUser().getUserId()).isEqualTo(u.id);
   assertThat(service.byId(5).getCredentialsExpired()).isTrue();assertThat(service.loginById(5).getUser().getCredentialsExpired()).isTrue();
  }

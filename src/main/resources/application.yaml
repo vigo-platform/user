@@ -47,6 +47,14 @@ app:
   outbox:
     enabled: ${OUTBOX_ENABLED:true}
     poll-ms: ${OUTBOX_POLL_MS:1000}
+  coach-applications:
+    # Invitations are single-use and email-bound; registration after this window
+    # creates a normal ATHLETE account instead of a COACH.
+    invitation-ttl: ${COACH_INVITATION_TTL:P30D}
+    lookup-ttl: ${COACH_APPLICATION_LOOKUP_TTL:P90D}
+    rate-limit:
+      max-per-window: ${COACH_APPLICATION_RATE_LIMIT:5}
+      window: ${COACH_APPLICATION_RATE_WINDOW:PT15M}
 management:
   tracing:
     sampling:
