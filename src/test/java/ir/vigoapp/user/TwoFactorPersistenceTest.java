@@ -1,9 +1,9 @@
 package ir.vigoapp.user;
 
 import io.zonky.test.db.postgres.embedded.EmbeddedPostgres;
-import ir.vigoapp.user.domain.UserAccount;
-import ir.vigoapp.user.domain.UserRepository;
+import ir.vigoapp.user.entity.UserAccount;
 import ir.vigoapp.user.outbox.OutboxWriter;
+import ir.vigoapp.user.repository.UserRepository;
 import ir.vigoapp.user.service.CredentialService;
 import jakarta.persistence.EntityManager;
 import org.flywaydb.core.Flyway;
@@ -51,9 +51,9 @@ class TwoFactorPersistenceTest {
                 entityManager = factory.getObject().createEntityManager();
                 var repository = new JpaRepositoryFactory(entityManager).getRepository(UserRepository.class);
                 var service = new CredentialService(repository, mock(OutboxWriter.class), Duration.ZERO,
-                        new org.springframework.data.jpa.repository.support.JpaRepositoryFactory(entityManager).getRepository(ir.vigoapp.user.domain.CoachInvitationRepository.class),
-                        new org.springframework.data.jpa.repository.support.JpaRepositoryFactory(entityManager).getRepository(ir.vigoapp.user.domain.CoachApplicationRepository.class),
-                        new org.springframework.data.jpa.repository.support.JpaRepositoryFactory(entityManager).getRepository(ir.vigoapp.user.domain.CoachRepository.class));
+                        new org.springframework.data.jpa.repository.support.JpaRepositoryFactory(entityManager).getRepository(ir.vigoapp.user.repository.CoachInvitationRepository.class),
+                        new org.springframework.data.jpa.repository.support.JpaRepositoryFactory(entityManager).getRepository(ir.vigoapp.user.repository.CoachApplicationRepository.class),
+                        new org.springframework.data.jpa.repository.support.JpaRepositoryFactory(entityManager).getRepository(ir.vigoapp.user.repository.CoachRepository.class));
                 assertThat(service.byId(id).getTwoFactorEnabled()).isFalse();
 
                 // Force a DB read after each change; the mapper must not hard-code false

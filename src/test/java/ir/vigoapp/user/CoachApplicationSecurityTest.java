@@ -9,8 +9,8 @@ import ir.vigoapp.user.api.AdminCoachApplicationController;
 import ir.vigoapp.user.api.ApiException;
 import ir.vigoapp.user.api.CoachApplicationController;
 import ir.vigoapp.user.domain.Role;
-import ir.vigoapp.user.domain.UserAccount;
-import ir.vigoapp.user.domain.UserRepository;
+import ir.vigoapp.user.entity.UserAccount;
+import ir.vigoapp.user.repository.UserRepository;
 import ir.vigoapp.user.security.PublicSubmissionRateLimiter;
 import ir.vigoapp.user.security.SecurityConfig;
 import ir.vigoapp.user.service.CoachApplicationService;
@@ -86,15 +86,15 @@ class CoachApplicationSecurityTest {
     @BeforeEach
     void setUp() {
         var account = new UserAccount();
-        account.id = 1L;
-        account.publicId = ID;
-        account.role = Role.ADMIN;
+        account.setId(1L);
+        account.setPublicId(ID);
+        account.setRole(Role.ADMIN);
         when(users.findById(1L)).thenReturn(Optional.of(account));
         when(users.findByPublicId(ID)).thenReturn(Optional.of(account));
         when(applications.submit(any())).thenReturn(Map.of("application_id", UUID.randomUUID(),
                 "status", "PENDING", "lookup_token", "token", "submitted_at", Instant.now()));
         when(applications.status("token")).thenReturn(Map.of("application_id", UUID.randomUUID(), "status", "PENDING"));
-        when(applications.list(0, 20, null)).thenReturn(new ir.vigoapp.user.api.Views.Paged<>(0, 20, 0, 0, java.util.List.of()));
+        when(applications.list(0, 20, null)).thenReturn(new ir.vigoapp.user.dto.Views.Paged<>(0, 20, 0, 0, java.util.List.of()));
     }
 
     String token(String role, long id) throws Exception {

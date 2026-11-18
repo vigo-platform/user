@@ -1,9 +1,13 @@
 package ir.vigoapp.user;
 
+import ir.vigoapp.user.entity.CoachProfile;
+import ir.vigoapp.user.entity.UserAccount;
 import io.zonky.test.db.postgres.embedded.EmbeddedPostgres;
 import ir.vigoapp.user.api.ApiException;
 import ir.vigoapp.user.domain.*;
 import ir.vigoapp.user.outbox.OutboxWriter;
+import ir.vigoapp.user.repository.CoachRepository;
+import ir.vigoapp.user.repository.UserRepository;
 import ir.vigoapp.user.service.ProfileService;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityManagerFactory;
@@ -112,7 +116,7 @@ class CoachLookupRegressionTest {
  }
  @Test void existingUserProxyMustNotChangePublicEligibilityOrReturnedId() {
   var id=seed(CoachStatus.APPROVED);
-  long internalId=users.findByPublicId(id).orElseThrow().id;
+  long internalId=users.findByPublicId(id).orElseThrow().getId();
   new TransactionTemplate(manager).executeWithoutResult(tx->{
    var reference=em.getReference(UserAccount.class,internalId);
    assertThat(org.hibernate.Hibernate.isInitialized(reference)).isFalse();
@@ -122,7 +126,7 @@ class CoachLookupRegressionTest {
  }
  @Test void existingUserProxyMustNotCorruptPublicListId() {
   var id=seed(CoachStatus.APPROVED);
-  long internalId=users.findByPublicId(id).orElseThrow().id;
+  long internalId=users.findByPublicId(id).orElseThrow().getId();
   new TransactionTemplate(manager).executeWithoutResult(tx->{
    em.getReference(UserAccount.class,internalId);
    var returned=profiles.listPublicCoaches(0,100).content().stream()
@@ -133,12 +137,12 @@ class CoachLookupRegressionTest {
  }
  @Test void decisionWithExistingUserProxyPersistsTheRealAccountRole() {
   var id=seed(CoachStatus.PENDING);
-  long internalId=users.findByPublicId(id).orElseThrow().id;
+  long internalId=users.findByPublicId(id).orElseThrow().getId();
   new TransactionTemplate(manager).executeWithoutResult(tx->{
    em.getReference(UserAccount.class,internalId);
    assertThat(profiles.decide(UUID.randomUUID(),id,true,null)).containsEntry("coach_id",id);
   });
-  assertThat(users.findByPublicId(id).orElseThrow().role).isEqualTo(Role.COACH);
+  assertThat(users.findByPublicId(id).orElseThrow().getRole()).isEqualTo(Role.COACH);
  }
  @Test void unknownCoachRemainsNotFound() {
   var unknown=UUID.randomUUID();
@@ -148,11 +152,11 @@ class CoachLookupRegressionTest {
  }
  private UUID seed(CoachStatus status) {
   return new TransactionTemplate(manager).execute(tx->{
-   var u=new UserAccount();u.email=UUID.randomUUID()+"@example.test";u.displayName="Synthetic Coach";
-   u.replacePassword("synthetic-hash");u.avatarUrl="https://example.test/avatar";
-   u.role=status==CoachStatus.APPROVED?Role.COACH:Role.ATHLETE;users.saveAndFlush(u);
-   var c=new CoachProfile();c.user=u;c.displayName="Coach "+u.publicId;c.bio="Synthetic coach biography";c.specialties="[]";c.status=status;
-   coaches.saveAndFlush(c);return u.publicId;
+   var u=new UserAccount();u.setEmail(UUID.randomUUID()+"@example.test");u.setDisplayName("Synthetic Coach");
+   u.replacePassword("synthetic-hash");u.setAvatarUrl("https://example.test/avatar");
+   u.setRole(status==CoachStatus.APPROVED?Role.COACH:Role.ATHLETE);users.saveAndFlush(u);
+   var c=new CoachProfile();c.setUser(u);c.setDisplayName("Coach "+u.getPublicId());c.setBio("Synthetic coach biography");c.setSpecialties("[]");c.setStatus(status);
+   coaches.saveAndFlush(c);return u.getPublicId();
   });
  }
  private void assertConflict(Runnable action) {

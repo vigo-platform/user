@@ -1,9 +1,19 @@
 package ir.vigoapp.user;
 
+import ir.vigoapp.user.dto.order.CreateOrderResponse;
+import ir.vigoapp.user.entity.CoachProfile;
+import ir.vigoapp.user.entity.UserAccount;
 import io.zonky.test.db.postgres.embedded.EmbeddedPostgres;
 import ir.vigoapp.user.api.ApiException;
-import ir.vigoapp.user.api.Requests;
 import ir.vigoapp.user.domain.*;
+import ir.vigoapp.user.domain.plan.PlanInclude;
+import ir.vigoapp.user.domain.plan.subscription.SubscriptionStatus;
+import ir.vigoapp.user.dto.Requests;
+import ir.vigoapp.user.repository.CoachPlanIncludeRepository;
+import ir.vigoapp.user.repository.CoachPlanRepository;
+import ir.vigoapp.user.repository.CoachRepository;
+import ir.vigoapp.user.repository.PlanSubscriptionRepository;
+import ir.vigoapp.user.repository.UserRepository;
 import ir.vigoapp.user.service.CoachPlanService;
 import ir.vigoapp.user.service.OrderClient;
 import ir.vigoapp.user.service.PlanPurchaseService;
@@ -40,6 +50,7 @@ class PlanPurchaseServiceTest {
 
     UUID coachId = UUID.randomUUID();
     UUID athleteId = UUID.randomUUID();
+    Long athleteUserId;
 
     @BeforeAll
     static void start() throws Exception {
@@ -70,28 +81,39 @@ class PlanPurchaseServiceTest {
                 factory.getRepository(CoachRepository.class));
         orders = mock(OrderClient.class);
         purchases = new PlanPurchaseService(planService, factory.getRepository(PlanSubscriptionRepository.class),
-                orders, new JdbcTemplate(dataSource));
-        inTx(() -> { seedCoach(); return null; });
+                orders, new JdbcTemplate(dataSource), factory.getRepository(UserRepository.class));
+        inTx(() -> {
+            seedCoach();
+            var athlete = new UserAccount();
+            athlete.setPublicId(athleteId);
+            athlete.setEmail("athlete@example.test");
+            athlete.setDisplayName("Athlete");
+            athlete.replacePassword("hash");
+            em.persist(athlete);
+            em.flush();
+            athleteUserId = athlete.getId();
+            return null;
+        });
     }
 
     private void seedCoach() {
         var u = new UserAccount();
-        u.publicId = coachId; u.email = "coach@example.test"; u.displayName = "Coach";
-        u.replacePassword("hash"); u.role = Role.COACH; u.emailVerified = true;
+        u.setPublicId(coachId); u.setEmail("coach@example.test"); u.setDisplayName("Coach");
+        u.replacePassword("hash"); u.setRole(Role.COACH); u.setEmailVerified(true);
         em.persist(u); em.flush();
         var c = new CoachProfile();
-        c.user = u; c.displayName = "Coach"; c.bio = "Synthetic coach biography";
-        c.specialties = "[]"; c.status = CoachStatus.APPROVED;
+        c.setUser(u); c.setDisplayName("Coach"); c.setBio("Synthetic coach biography");
+        c.setSpecialties("[]"); c.setStatus(CoachStatus.APPROVED);
         em.persist(c); em.flush();
     }
 
     private <T> T inTx(java.util.function.Supplier<T> work) { return tx.execute(s -> work.get()); }
 
-    private UUID activePlan() {
+    private Long activePlan() {
         Map<String, Object> created = inTx(() -> planService.create(coachId,
                 new Requests.Plan("Monthly", "Plan description", 500_000L, 30,
                         List.of(PlanInclude.WORKOUT, PlanInclude.NUTRITION))));
-        return (UUID) created.get("plan_id");
+        return (Long) created.get("plan_id");
     }
 
     private int subs() {
@@ -100,20 +122,23 @@ class PlanPurchaseServiceTest {
 
     @Test
     void purchaseCreatesPendingSubscriptionAndNeverActivatesIt() {
-        UUID planId = activePlan();
-        when(orders.createOrder(any())).thenReturn(new OrderClient.CreateOrderResponse(UUID.randomUUID(), "PENDING"));
+        Long planId = activePlan();
+        when(orders.createOrder(any())).thenReturn(new CreateOrderResponse(1L, "PENDING"));
         var result = inTx(() -> purchases.purchase(athleteId, planId));
-        assertThat(result).containsEntry("status", SubscriptionStatus.PENDING_PAYMENT);
+        assertThat(result).containsEntry("status", SubscriptionStatus.PENDING_PAYMENT)
+                .containsEntry("plan_id", planId)
+                .containsEntry("order_id", 1L)
+                .hasEntrySatisfying("subscription_id", id -> assertThat(id).isInstanceOf(Long.class));
         assertThat(result).containsEntry("payment_required", true);
         assertThat(result).containsEntry("amount_due", null);
         var row = new JdbcTemplate(dataSource).queryForMap("select status, athlete_id, coach_id from plan_subscriptions");
         assertThat(row.get("status")).isEqualTo("PENDING_PAYMENT");
-        assertThat(row.get("athlete_id")).isEqualTo(athleteId);
+        assertThat(row.get("athlete_id")).isEqualTo(athleteUserId);
     }
 
     @Test
     void orderFailureLeavesNoSubscriptionBehind() {
-        UUID planId = activePlan();
+        Long planId = activePlan();
         when(orders.createOrder(any())).thenThrow(new ApiException(503, "ORDER_UNAVAILABLE", "down", "پایین"));
         assertThatThrownBy(() -> inTx(() -> purchases.purchase(athleteId, planId)))
                 .isInstanceOfSatisfying(ApiException.class, e -> assertThat(e.code).isEqualTo("ORDER_UNAVAILABLE"));
@@ -122,7 +147,7 @@ class PlanPurchaseServiceTest {
 
     @Test
     void archivedPlanCannotBePurchased() {
-        UUID planId = activePlan();
+        Long planId = activePlan();
         inTx(() -> { planService.archive(coachId, planId); return null; });
         assertThatThrownBy(() -> inTx(() -> purchases.purchase(athleteId, planId)))
                 .isInstanceOfSatisfying(ApiException.class, e -> assertThat(e.code).isEqualTo("PLAN_ARCHIVED"));
@@ -131,7 +156,7 @@ class PlanPurchaseServiceTest {
 
     @Test
     void coachCannotBuyOwnPlan() {
-        UUID planId = activePlan();
+        Long planId = activePlan();
         assertThatThrownBy(() -> inTx(() -> purchases.purchase(coachId, planId)))
                 .isInstanceOfSatisfying(ApiException.class, e -> assertThat(e.status).isEqualTo(403));
         verifyNoInteractions(orders);
@@ -139,9 +164,9 @@ class PlanPurchaseServiceTest {
 
     @Test
     void paymentSuccessActivatesOnceAndDuplicatesAreNoOps() {
-        UUID planId = activePlan();
-        UUID orderId = UUID.randomUUID();
-        when(orders.createOrder(any())).thenReturn(new OrderClient.CreateOrderResponse(orderId, "PENDING"));
+        Long planId = activePlan();
+        Long orderId = 1L;
+        when(orders.createOrder(any())).thenReturn(new CreateOrderResponse(orderId, "PENDING"));
         inTx(() -> purchases.purchase(athleteId, planId));
         UUID eventId = UUID.randomUUID();
         Instant paidAt = Instant.parse("2026-11-18T10:00:00Z");
@@ -162,7 +187,7 @@ class PlanPurchaseServiceTest {
 
     @Test
     void unknownOrderIsAcknowledgedWithoutChangingAnything() {
-        assertThat(inTx(() -> purchases.applyPaymentSuccess(UUID.randomUUID(), UUID.randomUUID(), Instant.now())))
+        assertThat(inTx(() -> purchases.applyPaymentSuccess(UUID.randomUUID(), 999L, Instant.now())))
                 .isFalse();
         assertThat(new JdbcTemplate(dataSource).queryForObject("select count(*) from consumed_events", Integer.class))
                 .isEqualTo(1);
@@ -170,9 +195,9 @@ class PlanPurchaseServiceTest {
 
     @Test
     void subscriptionDurationComesFromThePlan() {
-        UUID planId = activePlan();
-        UUID orderId = UUID.randomUUID();
-        when(orders.createOrder(any())).thenReturn(new OrderClient.CreateOrderResponse(orderId, "PENDING"));
+        Long planId = activePlan();
+        Long orderId = 1L;
+        when(orders.createOrder(any())).thenReturn(new CreateOrderResponse(orderId, "PENDING"));
         inTx(() -> purchases.purchase(athleteId, planId));
         Instant paidAt = Instant.parse("2026-11-18T10:00:00Z");
         inTx(() -> purchases.applyPaymentSuccess(UUID.randomUUID(), orderId, paidAt));

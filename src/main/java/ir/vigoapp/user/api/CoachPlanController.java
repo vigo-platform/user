@@ -1,5 +1,8 @@
 package ir.vigoapp.user.api;
 
+import lombok.RequiredArgsConstructor;
+import ir.vigoapp.user.dto.Envelope;
+import ir.vigoapp.user.dto.Requests;
 import ir.vigoapp.user.service.CoachPlanService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
@@ -16,10 +19,10 @@ import java.util.UUID;
  */
 @RestController
 @RequestMapping("/api/v1/coaches/me/plans")
+@RequiredArgsConstructor
 public class CoachPlanController {
     private final CoachPlanService service;
 
-    public CoachPlanController(CoachPlanService service) { this.service = service; }
 
     private static UUID id(Authentication a) { return UUID.fromString(a.getName()); }
 
@@ -33,18 +36,18 @@ public class CoachPlanController {
     }
 
     @PutMapping("/{plan_id}")
-    public Envelope<?> update(Authentication a, @PathVariable UUID plan_id, @Valid @RequestBody Requests.Plan body) {
+    public Envelope<?> update(Authentication a, @PathVariable Long plan_id, @Valid @RequestBody Requests.Plan body) {
         return Envelope.ok(service.update(id(a), plan_id, body));
     }
 
     @DeleteMapping("/{plan_id}")
-    public Envelope<?> archive(Authentication a, @PathVariable UUID plan_id) {
+    public Envelope<?> archive(Authentication a, @PathVariable Long plan_id) {
         service.archive(id(a), plan_id);
         return Envelope.ok(null);
     }
 
     @PostMapping("/{plan_id}/activate")
-    public Envelope<?> activate(Authentication a, @PathVariable UUID plan_id) {
+    public Envelope<?> activate(Authentication a, @PathVariable Long plan_id) {
         service.activate(id(a), plan_id);
         return Envelope.ok(null);
     }

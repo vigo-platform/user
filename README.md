@@ -327,12 +327,16 @@ coach's plan returns 403, and an unknown plan returns 404. Plan categories are t
 combined workout+nutrition plan is data, not a new type. Archived plans leave the
 catalogue, cannot be edited (`409 PLAN_ARCHIVED`), and cannot be purchased.
 
+Plan endpoints use numeric identifiers. `plan_id` is the plan's ID, `coach_id`
+is the coach's numeric user ID, and `subscription_id` is the subscription's ID.
+Authenticated requests still identify the caller through the JWT subject.
+
 Purchases create a `PENDING_PAYMENT` subscription, then call Order. The request
-carries no price; only a payment-success event activates access, and activation is
-idempotent. Order does not exist yet, so the integration is disabled by default —
-see `api-contracts/docs/order-integration.md` for the proposed contract and the
-open questions. If Order is unavailable the pending row is removed and the caller
-gets `503 ORDER_UNAVAILABLE`.
+carries numeric plan, coach and athlete IDs. The Order response and
+`OrderPaid.data.order_id` use the numeric order ID. A payment-success event
+activates access idempotently. The integration is disabled by default. If Order
+is unavailable, the pending row is removed and the caller gets
+`503 ORDER_UNAVAILABLE`.
 
 ### Coach applicant documents
 

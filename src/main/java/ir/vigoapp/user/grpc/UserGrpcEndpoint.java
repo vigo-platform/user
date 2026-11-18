@@ -1,4 +1,5 @@
 package ir.vigoapp.user.grpc;
+import lombok.RequiredArgsConstructor;
 import io.grpc.*;
 import io.grpc.stub.StreamObserver;
 import ir.vigoapp.contracts.user.v1.*;
@@ -12,10 +13,10 @@ import java.net.InetSocketAddress;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 @Component
+@RequiredArgsConstructor
 public class UserGrpcEndpoint extends UserServiceGrpc.UserServiceImplBase {
  private static final Logger log=LoggerFactory.getLogger(UserGrpcEndpoint.class);
  private final CredentialService service;
- public UserGrpcEndpoint(CredentialService service){this.service=service;}
  @Override public void getUserLoginInfoByEmail(GetUserLoginInfoByEmailRequest r,StreamObserver<UserLoginInfoResponse> o){reply(o,()->service.loginByEmail(r.getEmail()),0,0);}
  @Override public void getUserLoginInfoByPhone(GetUserLoginInfoByPhoneRequest r,StreamObserver<UserLoginInfoResponse> o){reply(o,()->service.loginByPhone(r.getPhone()),0,0);}
  @Override public void getUserLoginInfoById(GetUserLoginInfoByIdRequest r,StreamObserver<UserLoginInfoResponse> o){reply(o,()->service.loginById(r.getUserId()),r.getUserId(),0);}
