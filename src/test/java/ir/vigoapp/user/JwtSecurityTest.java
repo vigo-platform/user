@@ -40,7 +40,7 @@ class JwtSecurityTest {
 
  @Test void coachPlanReadsRequireCoachRole() throws Exception {
   var paths = List.of("/api/v1/coaches/me/plans", "/api/v1/coaches/me/plan/form-options",
-    "/api/v1/coaches/me/plan/form-options/features/1", "/api/v1/coaches/me/plan/form-options/fields/1");
+    "/api/v1/coaches/me/plan/form-options/features/1");
   String athleteToken = good("ATHLETE");
   for (String path : paths) {
    mvc.perform(get(path)).andExpect(status().isUnauthorized());

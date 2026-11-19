@@ -1,5 +1,6 @@
 package ir.vigoapp.user.dto.plan;
 
+import ir.vigoapp.user.dto.plan.PlanOptionDetails.Field;
 import lombok.Builder;
 
 import java.util.List;
@@ -7,10 +8,10 @@ import java.util.List;
 @Builder
 public record CreatePlanFormOptions(
         List<Item> includeOptions,
-        List<GeneralField> generalFields,
-        List<Item> features
+        List<Field> generalFields,
+        List<FeatureOption> features
 ) {
     public record Item(long id, String code, String label) {}
 
-    public record GeneralField(long id, String code, String label, boolean required) {}
+    public record FeatureOption(long id, String code, String label, List<Field> fields) {}
 }

@@ -26,8 +26,19 @@ tests {
       }
     }
     expect(data.generalFields.map((field) => field.code)).to.include("PLAN_LEVEL");
-    for (const field of data.generalFields) {
-      expect(field.required).to.equal(true);
+    const assertFields = (fields, required) => {
+      for (const field of fields) {
+        expect(field).to.include.all.keys("id", "code", "label", "type", "helpText",
+          "valueType", "required", "validationRules");
+        expect(field.type).to.equal("FIELD");
+        expect(field.required).to.equal(required);
+        expect(field.validationRules).to.be.an("object");
+      }
+    };
+    assertFields(data.generalFields, true);
+    for (const feature of data.features) {
+      expect(feature.fields).to.be.an("array");
+      assertFields(feature.fields, false);
     }
   });
 }
@@ -35,6 +46,7 @@ tests {
 docs {
   Loads the options shown when a coach opens the create-plan form.
   Set USER_BEARER_TOKEN to a COACH access token.
+  General fields and each feature's fields include help text and validation rules.
   Submit every general field, including PLAN_LEVEL. Feature selection is optional.
 
   Example response (HTTP 200, synthetic IDs):
@@ -47,10 +59,36 @@ docs {
     "data": {
       "includeOptions": [{"id": 1, "code": "WORKOUT", "label": "برنامه تمرینی"}],
       "generalFields": [
-        {"id": 2, "code": "PRIMARY_GOALS", "label": "اهداف اصلی", "required": true},
-        {"id": 12, "code": "PLAN_LEVEL", "label": "سطح برنامه", "required": true}
+        {
+          "id": 12,
+          "code": "PLAN_LEVEL",
+          "label": "سطح برنامه",
+          "type": "FIELD",
+          "helpText": "سطح‌هایی که این پلن برای آن‌ها مناسب است",
+          "valueType": "MULTI_SELECT",
+          "required": true,
+          "validationRules": {"options": [{"code": "BEGINNER", "label": "مبتدی"}]}
+        }
       ],
-      "features": [{"id": 3, "code": "PROGRESS_TRACKING", "label": "پیگیری پیشرفت"}]
+      "features": [
+        {
+          "id": 3,
+          "code": "PERIODIC_PLAN_REVIEW",
+          "label": "بازبینی دوره‌ای برنامه",
+          "fields": [
+            {
+              "id": 13,
+              "code": "REVIEW_INTERVAL_DAYS",
+              "label": "فاصله بازبینی",
+              "type": "FIELD",
+              "helpText": "بر حسب روز",
+              "valueType": "INTEGER",
+              "required": false,
+              "validationRules": {"min": 1, "max": 90}
+            }
+          ]
+        }
+      ]
     },
     "timestamp": "2026-11-18T12:00:00Z"
   }

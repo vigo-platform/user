@@ -1,11 +1,12 @@
 package ir.vigoapp.user.api.plan;
 
-import ir.vigoapp.user.dto.plan.CreatePlanFormOptions.GeneralField;
+import ir.vigoapp.user.dto.plan.CreatePlanFormOptions.Item;
 import ir.vigoapp.user.dto.plan.PlanOptionDetails.Feature;
 import ir.vigoapp.user.dto.plan.PlanOptionDetails.Field;
 import ir.vigoapp.user.entity.plan.catalog.PlanFieldDefinition.ValueType;
 import ir.vigoapp.user.repository.UserRepository;
 import ir.vigoapp.user.repository.plan.PlanCatalogRepository;
+import ir.vigoapp.user.repository.plan.PlanCatalogRepository.FieldDefinition;
 import ir.vigoapp.user.security.SecurityConfig;
 import ir.vigoapp.user.service.plan.CoachPlanService;
 import org.junit.jupiter.api.Test;
@@ -40,30 +41,39 @@ class PlanOptionDetailsTest {
     @MockitoBean UserRepository users;
 
     @Test
-    void exposesLevelThroughTheGeneralFieldEndpoints() throws Exception {
-        var level = new Field(12, "PLAN_LEVEL", "سطح برنامه", null, ValueType.MULTI_SELECT, true,
+    void exposesFullGeneralAndFeatureFieldDetailsInFormOptions() throws Exception {
+        var level = new Field(12, "PLAN_LEVEL", "سطح برنامه", "سطح مناسب برنامه", ValueType.MULTI_SELECT, true,
                 json.readTree("""
                         {"options":[{"code":"BEGINNER","label":"مبتدی"}]}
                         """));
-        when(catalog.findGeneralFields()).thenReturn(List.of(
-                new GeneralField(level.id(), level.code(), level.label(), level.required())));
-        when(catalog.findFieldDetails(level.id())).thenReturn(Optional.of(level));
+        var review = new Field(1, "REVIEW_INTERVAL_DAYS", "فاصله بازبینی", "بر حسب روز",
+                ValueType.INTEGER, false, json.readTree("{\"min\":1,\"max\":90}"));
+        when(catalog.findActiveFieldDefinitions()).thenReturn(List.of(
+                new FieldDefinition(level, null), new FieldDefinition(review, 1L)));
+        when(catalog.findFeatures()).thenReturn(List.of(new Item(1, "PERIODIC_PLAN_REVIEW", "بازبینی")));
         var coach = user("coach").roles("COACH");
 
         mvc.perform(get(FORM_URL).with(coach))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.levels").doesNotHaveJsonPath())
+                .andExpect(jsonPath("$.data.generalFields.length()").value(1))
+                .andExpect(jsonPath("$.data.generalFields[0].id").value(12))
                 .andExpect(jsonPath("$.data.generalFields[0].code").value("PLAN_LEVEL"))
-                .andExpect(jsonPath("$.data.generalFields[0].required").value(true));
-        mvc.perform(get(FIELD_URL, level.id()).with(coach))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.required").value(true))
-                .andExpect(jsonPath("$.data.valueType").value("MULTI_SELECT"))
-                .andExpect(jsonPath("$.data.validationRules.options[0].code").value("BEGINNER"));
+                .andExpect(jsonPath("$.data.generalFields[0].label").value(level.label()))
+                .andExpect(jsonPath("$.data.generalFields[0].helpText").value(level.helpText()))
+                .andExpect(jsonPath("$.data.generalFields[0].required").value(true))
+                .andExpect(jsonPath("$.data.generalFields[0].type").value("FIELD"))
+                .andExpect(jsonPath("$.data.generalFields[0].valueType").value("MULTI_SELECT"))
+                .andExpect(jsonPath("$.data.generalFields[0].validationRules.options[0].code").value("BEGINNER"))
+                .andExpect(jsonPath("$.data.features[0].fields[0].code").value(review.code()))
+                .andExpect(jsonPath("$.data.features[0].fields[0].type").value("FIELD"))
+                .andExpect(jsonPath("$.data.features[0].fields[0].valueType").value("INTEGER"))
+                .andExpect(jsonPath("$.data.features[0].fields[0].required").value(false))
+                .andExpect(jsonPath("$.data.features[0].fields[0].validationRules.max").value(90));
     }
 
     @Test
-    void resolvesOverlappingIdsAndReturnsAllFeatureFields() throws Exception {
+    void returnsAllFieldsInFeatureDetails() throws Exception {
         var field = new Field(1, "REVIEW_INTERVAL_DAYS", "فاصله بازبینی", "بر حسب روز",
                 ValueType.INTEGER, false, json.readTree("{\"min\":1,\"max\":90}"));
         var secondField = new Field(2, "REVIEW_COUNT", "تعداد بازبینی", null,
@@ -71,7 +81,6 @@ class PlanOptionDetailsTest {
         var feature = new Feature(1, "PERIODIC_PLAN_REVIEW", "بازبینی", "بازبینی دوره‌ای",
                 "FOLLOW_UP", List.of(field, secondField));
         when(catalog.findFeatureDetails(1)).thenReturn(Optional.of(feature));
-        when(catalog.findFieldDetails(1)).thenReturn(Optional.of(field));
 
         mvc.perform(get(FEATURE_URL, 1).with(user("coach").roles("COACH")))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.success").value(true))
@@ -83,13 +92,6 @@ class PlanOptionDetailsTest {
                 .andExpect(jsonPath("$.data.fields[0].validationRules.max").value(90))
                 .andExpect(jsonPath("$.data.fields[1].code").value(secondField.code()))
                 .andExpect(jsonPath("$.data.fields[1].validationRules.max").value(10));
-        mvc.perform(get(FIELD_URL, 1).with(user("coach").roles("COACH")))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.data.type").value("FIELD"))
-                .andExpect(jsonPath("$.data.code").value(field.code()))
-                .andExpect(jsonPath("$.data.fields").doesNotExist())
-                .andExpect(jsonPath("$.data.valueType").value("INTEGER"))
-                .andExpect(jsonPath("$.data.required").value(false))
-                .andExpect(jsonPath("$.data.validationRules.min").value(1));
     }
 
     @Test
@@ -102,22 +104,24 @@ class PlanOptionDetailsTest {
     }
 
     @Test
-    void rejectsUnknownItemsAndMalformedInputs() throws Exception {
+    void rejectsUnknownFeaturesAndMalformedIds() throws Exception {
         var coach = user("coach").roles("COACH");
-        for (String url : List.of(FEATURE_URL, FIELD_URL)) {
-            mvc.perform(get(url, 99).with(coach)).andExpect(status().isNotFound())
-                    .andExpect(jsonPath("$.code").value("NOT_FOUND"));
-            mvc.perform(get(url, "invalid").with(coach)).andExpect(status().isBadRequest());
-            mvc.perform(get(url, 0).with(coach)).andExpect(status().isBadRequest());
-        }
+        mvc.perform(get(FEATURE_URL, 99).with(coach)).andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("NOT_FOUND"));
+        mvc.perform(get(FEATURE_URL, "invalid").with(coach)).andExpect(status().isBadRequest());
+        mvc.perform(get(FEATURE_URL, 0).with(coach)).andExpect(status().isBadRequest());
     }
 
     @Test
     void requiresCoachRole() throws Exception {
-        for (String url : List.of(FEATURE_URL, FIELD_URL)) {
-            mvc.perform(get(url, 1)).andExpect(status().isUnauthorized());
-            mvc.perform(get(url, 1).with(user("athlete").roles("ATHLETE")))
-                    .andExpect(status().isForbidden());
-        }
+        mvc.perform(get(FEATURE_URL, 1)).andExpect(status().isUnauthorized());
+        mvc.perform(get(FEATURE_URL, 1).with(user("athlete").roles("ATHLETE")))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void doesNotExposeTheStandaloneFieldRoute() throws Exception {
+        mvc.perform(get(FIELD_URL, 1).with(user("coach").roles("COACH")))
+                .andExpect(status().isForbidden());
     }
 }

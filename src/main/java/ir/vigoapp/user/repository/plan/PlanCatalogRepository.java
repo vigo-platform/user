@@ -1,6 +1,5 @@
 package ir.vigoapp.user.repository.plan;
 
-import ir.vigoapp.user.dto.plan.CreatePlanFormOptions.GeneralField;
 import ir.vigoapp.user.dto.plan.CreatePlanFormOptions.Item;
 import ir.vigoapp.user.dto.plan.PlanOptionDetails.Feature;
 import ir.vigoapp.user.dto.plan.PlanOptionDetails.Field;
@@ -40,15 +39,6 @@ public class PlanCatalogRepository {
                 """).query(Item.class).list();
     }
 
-    public List<GeneralField> findGeneralFields() {
-        return jdbc.sql("""
-                SELECT id, code, label, is_required AS required
-                FROM plan_field_definitions
-                WHERE is_active AND feature_id IS NULL
-                ORDER BY display_order, id
-                """).query(GeneralField.class).list();
-    }
-
     public record FieldDefinition(Field field, Long featureId) {}
 
     public List<FieldDefinition> findActiveFieldDefinitions() {
@@ -62,20 +52,6 @@ public class PlanCatalogRepository {
                 """)
                 .query((row, index) -> new FieldDefinition(readField(row), row.getObject("feature_id", Long.class)))
                 .list();
-    }
-
-    public Optional<Field> findFieldDetails(long id) {
-        return jdbc.sql("""
-                SELECT field.id, field.code, field.label, field.help_text, field.value_type,
-                       field.is_required, field.validation_rules
-                FROM plan_field_definitions field
-                LEFT JOIN plan_feature_catalog feature ON feature.id = field.feature_id
-                WHERE field.id = :id AND field.is_active
-                  AND (field.feature_id IS NULL OR feature.is_active)
-                """)
-                .param("id", id)
-                .query((row, index) -> readField(row))
-                .optional();
     }
 
     public Optional<Feature> findFeatureDetails(long id) {

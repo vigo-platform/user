@@ -7,6 +7,7 @@ import ir.vigoapp.user.api.ApiException;
 import ir.vigoapp.user.domain.*;
 import ir.vigoapp.user.domain.plan.PlanStatus;
 import ir.vigoapp.user.dto.Requests;
+import ir.vigoapp.user.dto.plan.CreatePlanFormOptions;
 import ir.vigoapp.user.dto.plan.PlanFieldValue;
 import ir.vigoapp.user.entity.plan.catalog.PlanIncludeOption;
 import ir.vigoapp.user.repository.CoachPlanIncludeRepository;
@@ -110,18 +111,22 @@ class CoachPlanServiceTest {
     private List<PlanFieldValue> requiredPlanFields() {
         var values = Map.of("PRIMARY_GOALS", "[\"STRENGTH\"]", "TRAINING_LOCATION", "[\"GYM\"]",
                 "WEEKLY_TRAINING_SESSIONS", "3", "PLAN_LEVEL", "[\"BEGINNER\",\"INTERMEDIATE\"]");
-        return catalog.findGeneralFields().stream()
+        return formOptions().generalFields().stream()
                 .map(field -> new PlanFieldValue(field.id(), json.readTree(values.get(field.code()))))
                 .sorted(Comparator.comparingLong(PlanFieldValue::fieldId)).toList();
     }
 
+    private CreatePlanFormOptions formOptions() {
+        return new ir.vigoapp.user.service.plan.CoachPlanService(catalog).getFormOptions();
+    }
+
     @Test
     void requiresLevelAndValidatesItsOptions() {
-        var level = catalog.findGeneralFields().stream().filter(field -> field.code().equals("PLAN_LEVEL"))
+        var generalFields = formOptions().generalFields();
+        var level = generalFields.stream().filter(field -> field.code().equals("PLAN_LEVEL"))
                 .findFirst().orElseThrow();
-        assertThat(catalog.findGeneralFields()).allMatch(field -> field.required());
-        assertThat(catalog.findFieldDetails(level.id()).orElseThrow().validationRules().path("options").size())
-                .isEqualTo(4);
+        assertThat(generalFields).allMatch(field -> field.required());
+        assertThat(level.validationRules().path("options").size()).isEqualTo(4);
         var fields = new ArrayList<>(requiredPlanFields());
         fields.removeIf(field -> field.fieldId() == level.id());
         var request = new Requests.Plan("Workout", null, 100000L, 30, List.of("WORKOUT"), null, fields);
@@ -136,9 +141,10 @@ class CoachPlanServiceTest {
 
     @Test
     void featureFieldsAreOptionalAndBelongToSelectedFeatures() {
-        var feature = catalog.findFeatures().stream().filter(option -> option.code().equals("PERIODIC_PLAN_REVIEW"))
+        var feature = formOptions().features().stream().filter(option -> option.code().equals("PERIODIC_PLAN_REVIEW"))
                 .findFirst().orElseThrow();
-        var field = catalog.findFeatureDetails(feature.id()).orElseThrow().fields().getFirst();
+        assertThat(feature.fields()).containsExactlyElementsOf(catalog.findFeatureDetails(feature.id()).orElseThrow().fields());
+        var field = feature.fields().getFirst();
         assertThat(field.required()).isFalse();
         var required = requiredPlanFields();
         var request = new Requests.Plan("Workout", null, 100000L, 30, List.of("WORKOUT"), List.of(feature.id()), required);

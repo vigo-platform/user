@@ -63,8 +63,7 @@ public class SecurityConfig {
     .requestMatchers(POST,"/api/v1/admin/coaches/applications/{application_id}/approve","/api/v1/admin/coaches/applications/{application_id}/reject").hasRole("ADMIN")
     // Coaches manage their own plans.
     .requestMatchers(GET,"/api/v1/coaches/me/plans","/api/v1/coaches/me/plan/form-options",
-     "/api/v1/coaches/me/plan/form-options/features/{id}",
-     "/api/v1/coaches/me/plan/form-options/fields/{id}").authenticated()
+     "/api/v1/coaches/me/plan/form-options/features/{id}").authenticated()
     .requestMatchers(POST,"/api/v1/coaches/me/plans").hasRole("COACH")
     .requestMatchers(PUT,"/api/v1/coaches/me/plans/{plan_id}").hasRole("COACH")
     .requestMatchers(DELETE,"/api/v1/coaches/me/plans/{plan_id}").hasRole("COACH")
