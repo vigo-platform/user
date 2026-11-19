@@ -1,0 +1,55 @@
+meta {
+  name: Replace coach plan
+  type: http
+  seq: 8
+}
+
+put {
+  url: {{base_url}}/api/v1/coaches/me/plans/{{created_coach_plan_id}}
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{process.env.USER_BEARER_TOKEN}}
+}
+
+body:json {
+  {
+    "title": "برنامه تمرین قدرتی پیشرفته",
+    "summary": "چهار جلسه تمرین قدرتی در هفته",
+    "description": "برنامه ۴۵ روزه برای تمرین در باشگاه.",
+    "price": 140000,
+    "compareAtPrice": 170000,
+    "durationDays": 45,
+    "firstDeliveryDays": 1,
+    "includes": ["WORKOUT"],
+    "featureIds": [],
+    "fieldValues": [
+      { "fieldId": {{plan_primary_goals_field_id}}, "value": ["STRENGTH"] },
+      { "fieldId": {{plan_training_location_field_id}}, "value": ["GYM"] },
+      { "fieldId": {{plan_weekly_training_sessions_field_id}}, "value": 4 },
+      { "fieldId": {{plan_level_field_id}}, "value": ["INTERMEDIATE"] }
+    ]
+  }
+}
+
+tests {
+  test("Replaces the submission and its selections", function () {
+    expect(res.getStatus()).to.equal(200);
+    expect(res.getBody().success).to.equal(true);
+    const { price, compareAtPrice, durationDays, featureIds, features, fieldValues } = res.getBody().data;
+    expect(price).to.equal(140000);
+    expect(compareAtPrice).to.equal(170000);
+    expect(durationDays).to.equal(45);
+    expect(featureIds).to.deep.equal([]);
+    expect(features).to.deep.equal([]);
+    expect(fieldValues.find((field) => field.code === "PLAN_LEVEL").label).to.be.a("string").and.not.be.empty;
+  });
+}
+
+docs {
+  Run Get coach plan form options and Create coach plan with an approved COACH access token.
+  PUT submits the full plan with all required general answers and replaces the selection arrays.
+  This example sets both prices explicitly. Leaving compareAtPrice out makes it equal to price.
+}

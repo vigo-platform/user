@@ -4,7 +4,7 @@ meta {
   seq: 6
 }
 
-put {
+patch {
   url: {{base_url}}/api/v1/coaches/me/plans/{{created_coach_plan_id}}
   body: json
   auth: bearer
@@ -16,20 +16,14 @@ auth:bearer {
 
 body:json {
   {
-    "title": "برنامه تمرین قدرتی پیشرفته",
-    "summary": "چهار جلسه تمرین قدرتی در هفته",
-    "description": "نسخه به‌روزشده برنامه ۳۰ روزه برای تمرین در باشگاه.",
-    "price": 130000,
-    "compareAtPrice": 160000,
-    "durationDays": 30,
-    "firstDeliveryDays": 1,
-    "includes": ["WORKOUT"],
-    "featureIds": [],
-    "fieldValues": [
-      { "fieldId": {{plan_primary_goals_field_id}}, "value": ["STRENGTH"] },
-      { "fieldId": {{plan_training_location_field_id}}, "value": ["GYM"] },
-      { "fieldId": {{plan_weekly_training_sessions_field_id}}, "value": 4 },
-      { "fieldId": {{plan_level_field_id}}, "value": ["ADVANCED"] }
+    "fields": [
+      { "fieldId": {{plan_level_field_id}}, "value": ["INTERMEDIATE"] }
+    ],
+    "features": [
+      {
+        "featureId": {{plan_review_feature_id}},
+        "fields": [{ "fieldId": {{plan_review_interval_field_id}}, "value": 14 }]
+      }
     ]
   }
 }
@@ -40,12 +34,25 @@ tests {
     const { success, data } = res.getBody();
     expect(success).to.equal(true);
     expect(String(data.planId)).to.equal(bru.getVar("created_coach_plan_id"));
-    expect(data.price).to.equal(130000);
-    expect(data.compareAtPrice).to.equal(160000);
+    const featureId = Number(bru.getVar("plan_review_feature_id"));
+    expect(data.featureIds).to.include(featureId);
+    const feature = data.features.find((item) => item.id === featureId);
+    expect(feature.code).to.equal("PERIODIC_PLAN_REVIEW");
+    expect(feature.label).to.be.a("string").and.not.be.empty;
+    const answerFor = (code) => data.fieldValues.find((answer) => answer.code === code);
+    expect(answerFor("PLAN_LEVEL").value).to.deep.equal(["INTERMEDIATE"]);
+    const review = answerFor("REVIEW_INTERVAL_DAYS");
+    expect(review.value).to.equal(14);
+    expect(review.featureId).to.equal(featureId);
+    expect(review.label).to.be.a("string").and.not.be.empty;
   });
 }
 
 docs {
-  Run Get coach plan form options and then Create coach plan in the same environment with the same coach token.
-  This request uses the ID returned by Create coach plan. It submits the full set of required fields.
+  Run Get coach plan form options, Get coach plan feature details, and Create coach plan in the same environment.
+  This example edits the plan level and the review interval and preserves other selections.
+  A body with {"price":130000} sets both prices to 130000. Include compareAtPrice to set a separate comparison price.
+  Send {"compareAtPrice":150000} to edit just the comparison price. A supplied includes array replaces the selected services.
+  Each submitted general or feature field requires a valid non-null value.
+  Send {"features":[{"featureId":{{plan_review_feature_id}},"fields":null}]} to remove the feature and all its answers.
 }

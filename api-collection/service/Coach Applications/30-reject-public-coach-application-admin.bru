@@ -1,0 +1,32 @@
+meta {
+  name: Reject public coach application admin
+  type: http
+  seq: 11
+}
+
+post {
+  url: {{base_url}}/api/v1/admin/coaches/applications/{{coach_application_id}}/reject
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{process.env.USER_BEARER_TOKEN}}
+}
+
+body:json {
+  { "reason": "Please provide a verifiable certification" }
+}
+
+tests {
+  test("Rejects the pending application", function () {
+    expect(res.getStatus()).to.equal(200);
+    expect(res.getBody().success).to.equal(true);
+    expect(res.getBody().data.status).to.equal("REJECTED");
+  });
+}
+
+docs {
+  Use an ADMIN access token and the UUID of a PENDING application.
+  To try both review actions, submit a separate application for the rejection.
+}

@@ -1,0 +1,27 @@
+meta {
+  name: Archive coach plan
+  type: http
+  seq: 9
+}
+
+delete {
+  url: {{base_url}}/api/v1/coaches/me/plans/{{created_coach_plan_id}}
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{process.env.USER_BEARER_TOKEN}}
+}
+
+tests {
+  test("Archives the owned plan", function () {
+    expect(res.getStatus()).to.equal(200);
+    expect(res.getBody().success).to.equal(true);
+  });
+}
+
+docs {
+  Use the plan owner's COACH access token. Create coach plan sets created_coach_plan_id.
+  The plan leaves the public listing. Use Restore coach plan to make it eligible for listing again.
+}

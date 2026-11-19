@@ -27,6 +27,8 @@ script:post-response {
         bru.setVar(variablesByCode[field.code], String(field.id));
       }
     }
+    const review = res.getBody().data.features.find((feature) => feature.code === "PERIODIC_PLAN_REVIEW");
+    if (review) bru.setVar("plan_review_feature_id", String(review.id));
   }
 }
 
@@ -61,7 +63,7 @@ docs {
   General fields include help text and validation rules.
   Use Get coach plan feature details to load a feature's fields.
   Submit every general field, including PLAN_LEVEL. Feature selection is optional.
-  A successful response saves the field IDs for the Create and Update coach plan examples.
+  A successful response saves the general field IDs and the periodic review feature ID for the collection examples.
 
   Example response (HTTP 200, synthetic IDs):
   ```json

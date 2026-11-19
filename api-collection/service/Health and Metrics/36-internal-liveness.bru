@@ -1,0 +1,22 @@
+meta {
+  name: Internal liveness
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{management_url}}/actuator/health/liveness
+  body: none
+  auth: none
+}
+
+tests {
+  test("Reports the service as live", function () {
+    expect(res.getStatus()).to.equal(200);
+    expect(res.getBody().status).to.equal("UP");
+  });
+}
+
+docs {
+  Use the management listener. An unhealthy probe can return HTTP 503.
+}

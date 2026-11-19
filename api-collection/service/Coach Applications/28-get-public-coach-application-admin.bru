@@ -1,0 +1,28 @@
+meta {
+  name: Get public coach application admin
+  type: http
+  seq: 9
+}
+
+get {
+  url: {{base_url}}/api/v1/admin/coaches/applications/{{coach_application_id}}
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{process.env.USER_BEARER_TOKEN}}
+}
+
+tests {
+  test("Returns the application review details", function () {
+    expect(res.getStatus()).to.equal(200);
+    expect(res.getBody().success).to.equal(true);
+    expect(res.getBody().data).to.include.all.keys("applicationId", "email", "status", "certificates", "experiences");
+  });
+}
+
+docs {
+  Use an ADMIN access token and set coach_application_id to the UUID of a submitted application.
+  Submit public coach application populates this variable for the application it creates.
+}

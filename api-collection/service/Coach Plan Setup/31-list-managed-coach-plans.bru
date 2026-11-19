@@ -1,0 +1,33 @@
+meta {
+  name: List managed coach plans
+  type: http
+  seq: 7
+}
+
+get {
+  url: {{base_url}}/api/v1/coaches/me/plans
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{process.env.USER_BEARER_TOKEN}}
+}
+
+tests {
+  test("Returns the managed plan list", function () {
+    expect(res.getStatus()).to.equal(200);
+    expect(res.getBody().success).to.equal(true);
+    const { data } = res.getBody();
+    expect(data).to.be.an("array");
+    for (const plan of data) {
+      expect(plan).to.include.all.keys("planId", "isActive", "isArchived", "featureIds", "features", "fieldValues");
+      for (const feature of plan.features) expect(feature).to.include.all.keys("id", "code", "label");
+      for (const field of plan.fieldValues) expect(field).to.include.all.keys("fieldId", "code", "label", "value");
+    }
+  });
+}
+
+docs {
+  Use a COACH access token. This route returns the full management representation for each owned plan.
+}

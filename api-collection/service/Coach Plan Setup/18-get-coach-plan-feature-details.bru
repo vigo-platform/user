@@ -15,7 +15,17 @@ auth:bearer {
 }
 
 vars:pre-request {
-  plan_feature_id: 9
+  plan_feature_id: {{plan_review_feature_id}}
+}
+
+script:post-response {
+  if (res.getStatus() === 200 && res.getBody().success) {
+    const feature = res.getBody().data;
+    if (feature.code === "PERIODIC_PLAN_REVIEW") {
+      const interval = feature.fields.find((field) => field.code === "REVIEW_INTERVAL_DAYS");
+      if (interval) bru.setVar("plan_review_interval_field_id", String(interval.id));
+    }
+  }
 }
 
 tests {
@@ -34,7 +44,7 @@ tests {
 }
 
 docs {
-  Set USER_BEARER_TOKEN to a COACH access token. In Vars, take plan_feature_id from data.features in Get coach plan form options.
-  
-  The response includes all active field definitions for the feature in data.fields. A feature without active fields returns an empty array. The seeded DIRECT_CONSULTATION feature has two fields.
+  Run Get coach plan form options first. This example loads the periodic review feature and saves its interval field ID for Update coach plan.
+  To inspect another feature, set plan_feature_id in Vars to its ID from data.features.
+  The response includes the feature's active field definitions in data.fields.
 }

@@ -1,0 +1,24 @@
+meta {
+  name: Get public coach application status
+  type: http
+  seq: 7
+}
+
+get {
+  url: {{base_url}}/api/v1/coaches/applications/{{coach_application_lookup_token}}
+  body: none
+  auth: none
+}
+
+tests {
+  test("Returns the public status and timestamps", function () {
+    expect(res.getStatus()).to.equal(200);
+    expect(res.getBody().success).to.equal(true);
+    expect(res.getBody().data).to.have.all.keys("applicationId", "status", "submittedAt", "reviewedAt");
+  });
+}
+
+docs {
+  Run Submit public coach application first to populate coach_application_lookup_token.
+  The private lookup token is sent in the URL.
+}

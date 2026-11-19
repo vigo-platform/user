@@ -20,7 +20,6 @@ body:json {
     "summary": "سه جلسه تمرین قدرتی در هفته",
     "description": "برنامه ۳۰ روزه برای تمرین در باشگاه.",
     "price": 120000,
-    "compareAtPrice": 150000,
     "durationDays": 30,
     "firstDeliveryDays": 1,
     "includes": ["WORKOUT"],
@@ -46,10 +45,16 @@ tests {
     const { success, data } = res.getBody();
     expect(success).to.equal(true);
     expect(data.planId).to.be.a("number").and.to.be.greaterThan(0);
+    expect(data.price).to.equal(120000);
+    expect(data.compareAtPrice).to.equal(data.price);
     expect(data.currency).to.equal("IRR");
     expect(data.status).to.equal("ACTIVE");
     expect(data.isActive).to.equal(true);
     expect(data.isArchived).to.equal(false);
+    expect(data.features).to.deep.equal([]);
+    const level = data.fieldValues.find((field) => field.code === "PLAN_LEVEL");
+    expect(level.label).to.be.a("string").and.not.be.empty;
+    expect(level.selectedOptions[0]).to.include({ code: "BEGINNER" });
   });
 }
 
@@ -57,5 +62,6 @@ docs {
   Set USER_BEARER_TOKEN to an approved COACH access token.
   Run Get coach plan form options first to populate the field IDs from the selected environment.
   This body answers all four seeded general fields and selects WORKOUT with no optional features.
+  Send price on creation. The API sets compareAtPrice to the same amount.
   The response saves the new plan ID for Update coach plan.
 }
