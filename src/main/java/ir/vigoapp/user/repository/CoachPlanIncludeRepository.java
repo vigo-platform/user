@@ -19,6 +19,12 @@ public interface CoachPlanIncludeRepository extends JpaRepository<CoachPlanInclu
             """)
     List<String> findCodesForPlan(Long planId);
 
+    @Query("""
+            select opt from CoachPlanInclude selected join selected.includeOption opt
+            where selected.plan.id = :planId order by opt.displayOrder, opt.id
+            """)
+    List<PlanIncludeOption> findOptionsForPlan(Long planId);
+
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("delete from CoachPlanInclude selected where selected.plan.id = :planId")
     void deleteForPlan(Long planId);

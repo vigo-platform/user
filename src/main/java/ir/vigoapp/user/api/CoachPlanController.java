@@ -5,13 +5,10 @@ import ir.vigoapp.user.dto.Envelope;
 import ir.vigoapp.user.dto.Requests;
 import ir.vigoapp.user.service.CoachPlanService;
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.*;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
-
-import java.util.Map;
 
 /**
  * Coach-owned plan management. Every mutation derives the coach identity from the
@@ -47,9 +44,9 @@ public class CoachPlanController {
         return Envelope.ok(null);
     }
 
-    @PostMapping("/{plan_id}/activate")
-    public Envelope<?> activate(Authentication a, @PathVariable Long plan_id) {
-        service.activate(id(a), plan_id);
+    @PostMapping({"/{plan_id}/unarchive", "/{plan_id}/activate"})
+    public Envelope<?> unarchive(Authentication a, @PathVariable Long plan_id) {
+        service.unarchive(id(a), plan_id);
         return Envelope.ok(null);
     }
 }

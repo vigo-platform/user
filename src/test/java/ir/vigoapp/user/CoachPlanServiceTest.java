@@ -19,6 +19,7 @@ import ir.vigoapp.user.service.CoachPlanService;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.*;
 import org.springframework.data.jpa.repository.support.JpaRepositoryFactory;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.orm.jpa.JpaTransactionManager;
 import org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean;
@@ -82,7 +83,7 @@ class CoachPlanServiceTest {
 
     private class JdbcTemplateReset {
         void run() {
-            new org.springframework.jdbc.core.JdbcTemplate(dataSource).update(
+            new JdbcTemplate(dataSource).update(
                     "delete from plan_subscriptions; delete from coach_plan_includes; delete from coach_plans; delete from coach_profiles; delete from users");
         }
     }
@@ -105,7 +106,7 @@ class CoachPlanServiceTest {
 
     private Requests.Plan plan(String title, long price, String... includes) {
         return new Requests.Plan(title, "Plan description", price, 30, List.of(includes), null,
-                requiredPlanFields());
+                requiredPlanFields(), null);
     }
 
     private List<PlanFieldValue> requiredPlanFields() {
@@ -129,7 +130,7 @@ class CoachPlanServiceTest {
         assertThat(level.validationRules().path("options").size()).isEqualTo(4);
         var fields = new ArrayList<>(requiredPlanFields());
         fields.removeIf(field -> field.fieldId() == level.id());
-        var request = new Requests.Plan("Workout", null, 100000L, 30, List.of("WORKOUT"), null, fields);
+        var request = new Requests.Plan("Workout", null, 100000L, 30, List.of("WORKOUT"), null, fields, null);
 
         assertThatThrownBy(() -> inTx(() -> service.create(coachA, request)))
                 .isInstanceOf(ApiException.class).hasMessage("Missing required field: PLAN_LEVEL");
@@ -146,7 +147,7 @@ class CoachPlanServiceTest {
         var field = catalog.findFeatureDetails(feature.id()).orElseThrow().fields().getFirst();
         assertThat(field.required()).isFalse();
         var required = requiredPlanFields();
-        var request = new Requests.Plan("Workout", null, 100000L, 30, List.of("WORKOUT"), List.of(feature.id()), required);
+        var request = new Requests.Plan("Workout", null, 100000L, 30, List.of("WORKOUT"), List.of(feature.id()), required, null);
         var created = inTx(() -> service.create(coachA, request));
         var planId = (Long) created.get("planId");
         assertThat(created).containsEntry("featureIds", List.of(feature.id())).containsEntry("fieldValues", required);
@@ -154,14 +155,15 @@ class CoachPlanServiceTest {
         var fields = new ArrayList<>(required);
         fields.add(new PlanFieldValue(field.id(), json.readTree("14")));
         fields.sort(Comparator.comparingLong(PlanFieldValue::fieldId));
-        var updated = new Requests.Plan("Updated workout", null, 100000L, 30, List.of("WORKOUT"), List.of(feature.id()), fields);
+        var updated = new Requests.Plan("Updated workout", null, 100000L, 30, List.of("WORKOUT"), List.of(feature.id()), fields, null);
         assertThat(inTx(() -> service.update(coachA, planId, updated)))
                 .containsEntry("featureIds", List.of(feature.id())).containsEntry("fieldValues", fields);
 
-        var unselected = new Requests.Plan("Updated workout", null, 100000L, 30, List.of("WORKOUT"), null, fields);
+        var unselected = new Requests.Plan("Updated workout", null, 100000L, 30, List.of("WORKOUT"), null, fields, null);
         assertThatThrownBy(() -> inTx(() -> service.update(coachA, planId, unselected)))
                 .isInstanceOf(ApiException.class).hasMessage("Select the feature before setting REVIEW_INTERVAL_DAYS");
-        assertThat(inTx(() -> service.detail(planId))).containsEntry("fieldValues", fields);
+        assertThat(inTx(() -> service.own(coachA))).singleElement()
+                .satisfies(view -> assertThat(view).containsEntry("fieldValues", fields));
         assertThat(inTx(() -> service.update(coachA, planId, plan("Workout", 100000, "WORKOUT"))))
                 .containsEntry("featureIds", List.of()).containsEntry("fieldValues", required);
     }
@@ -207,19 +209,20 @@ class CoachPlanServiceTest {
     }
 
     @Test
-    void anotherCoachCannotEditArchiveOrActivateSomeoneElsesPlan() {
+    void anotherCoachCannotEditArchiveOrRestoreSomeoneElsesPlan() {
         Long planId = (Long) inTx(() -> service.create(coachA, plan("Mine", 100000, "WORKOUT"))).get("planId");
         assertThatThrownBy(() -> inTx(() -> service.update(coachB, planId, plan("Hijack", 100000, "WORKOUT"))))
                 .isInstanceOfSatisfying(ApiException.class, e -> assertThat(e.status).isEqualTo(403));
         assertThatThrownBy(() -> inTx(() -> { service.archive(coachB, planId); return null; }))
                 .isInstanceOfSatisfying(ApiException.class, e -> assertThat(e.status).isEqualTo(403));
-        assertThatThrownBy(() -> inTx(() -> { service.activate(coachB, planId); return null; }))
+        assertThatThrownBy(() -> inTx(() -> { service.unarchive(coachB, planId); return null; }))
                 .isInstanceOfSatisfying(ApiException.class, e -> assertThat(e.status).isEqualTo(403));
     }
 
     @Test
     void archivedPlanLeavesMarketplaceAndCannotBeEdited() {
         Long planId = (Long) inTx(() -> service.create(coachA, plan("Season", 100000, "WORKOUT"))).get("planId");
+        setActive(planId, true);
         assertThat(inTx(() -> service.marketplace(0, 20, null)).content()).hasSize(1);
         inTx(() -> { service.archive(coachA, planId); return null; });
         assertThat(inTx(() -> service.marketplace(0, 20, null)).content()).isEmpty();
@@ -230,12 +233,84 @@ class CoachPlanServiceTest {
     }
 
     @Test
-    void reactivatingRestoresMarketplaceVisibility() {
-        Long planId = (Long) inTx(() -> service.create(coachA, plan("Season", 100000, "WORKOUT"))).get("planId");
+    void activationAndArchivingIndependentlyControlVisibilityAndPurchases() {
+        var created = inTx(() -> service.create(coachA, plan("Season", 100000, "WORKOUT")));
+        Long planId = (Long) created.get("planId");
+        assertThat(created).containsEntry("isActive", false).containsEntry("isArchived", false)
+                .containsEntry("status", PlanStatus.INACTIVE);
+        assertThat(inTx(() -> service.marketplace(0, 20, null)).content()).isEmpty();
+        assertThatThrownBy(() -> inTx(() -> service.requirePurchasable(planId)))
+                .isInstanceOfSatisfying(ApiException.class, e -> assertThat(e.code).isEqualTo("PLAN_INACTIVE"));
+
+        setActive(planId, true);
+        assertThat(inTx(() -> service.marketplace(0, 20, coachA)).content()).hasSize(1);
         inTx(() -> { service.archive(coachA, planId); return null; });
-        inTx(() -> { service.activate(coachA, planId); return null; });
+        assertThat(inTx(() -> service.own(coachA)).getFirst())
+                .containsEntry("isActive", true).containsEntry("isArchived", true);
+        assertThat(inTx(() -> service.marketplace(0, 20, coachA)).content()).isEmpty();
+        assertThatThrownBy(() -> inTx(() -> service.requirePurchasable(planId)))
+                .isInstanceOfSatisfying(ApiException.class, e -> assertThat(e.code).isEqualTo("PLAN_ARCHIVED"));
+
+        setActive(planId, false);
+        inTx(() -> { service.unarchive(coachA, planId); return null; });
+        assertThat(inTx(() -> service.own(coachA)).getFirst())
+                .containsEntry("isActive", false).containsEntry("isArchived", false);
+        assertThat(inTx(() -> service.marketplace(0, 20, null)).content()).isEmpty();
+
+        setActive(planId, true);
         assertThat(inTx(() -> service.marketplace(0, 20, null)).content()).hasSize(1);
         assertThat(inTx(() -> service.detail(planId))).containsEntry("status", PlanStatus.ACTIVE);
+    }
+
+    @Test
+    void planPricesUseTheSuppliedCurrencyAndUpdatesCanOmitIt() {
+        var request = new Requests.Plan("Standard plan", null, 25L, 30, List.of("WORKOUT"), null,
+                requiredPlanFields(), "USD");
+        var created = inTx(() -> service.create(coachA, request));
+        assertThat(created).containsEntry("price", 25L).containsEntry("currency", "USD");
+        assertThat(inTx(() -> service.update(coachA, (Long) created.get("planId"), plan("Updated", 30, "WORKOUT"))))
+                .containsEntry("price", 30L).containsEntry("currency", "USD");
+    }
+
+    @Test
+    void migrationPreservesLegacyPricesAndArchivedVisibility() {
+        var migration = Flyway.configure().dataSource(dataSource).schemas("legacy_plans");
+        migration.target("11").load().migrate();
+        var jdbc = new JdbcTemplate(dataSource);
+        jdbc.update("""
+                WITH account AS (
+                    INSERT INTO legacy_plans.users
+                        (email, password_hash, display_name, role, status, credentials_changed_at, created_at, updated_at)
+                    VALUES ('legacy@example.test', 'hash', 'Legacy coach', 'COACH', 'ACTIVE', now(), now(), now())
+                    RETURNING id
+                ), coach AS (
+                    INSERT INTO legacy_plans.coach_profiles
+                        (user_id, display_name, bio, specialties, experience_years, certifications, result_image_urls,
+                         status, created_at, updated_at)
+                    SELECT id, 'Legacy coach', 'Synthetic biography', '[]', 0, '[]', '[]', 'APPROVED', now(), now()
+                    FROM account RETURNING user_id
+                )
+                INSERT INTO legacy_plans.coach_plans
+                    (coach_user_id, title, price_rial, compare_at_price_rial, duration_days, is_active,
+                     created_at, updated_at, version)
+                SELECT coach.user_id, plan.title, plan.price, plan.price + 10000, 30, plan.active, now(), now(), 0
+                FROM coach CROSS JOIN (VALUES ('Archived', 100000, false), ('Public', 200000, true)) AS plan(title, price, active)
+                """);
+
+        migration.target("12").load().migrate();
+
+        assertThat(jdbc.queryForList("""
+                SELECT title, price, compare_at_price, currency, is_active, is_archived
+                FROM legacy_plans.coach_plans ORDER BY title
+                """)).containsExactly(
+                Map.of("title", "Archived", "price", 100000L, "compare_at_price", 110000L,
+                        "currency", "IRR", "is_active", true, "is_archived", true),
+                Map.of("title", "Public", "price", 200000L, "compare_at_price", 210000L,
+                        "currency", "IRR", "is_active", true, "is_archived", false));
+    }
+
+    private void setActive(Long planId, boolean active) {
+        tx.executeWithoutResult(status -> service.setActive(planId, active));
     }
 
     @Test
@@ -255,6 +330,7 @@ class CoachPlanServiceTest {
     @Test
     void detailOfArchivedPlanIsNotFoundForCustomers() {
         Long planId = (Long) inTx(() -> service.create(coachA, plan("Season", 100000, "WORKOUT"))).get("planId");
+        setActive(planId, true);
         inTx(() -> { service.archive(coachA, planId); return null; });
         assertThatThrownBy(() -> inTx(() -> service.detail(planId)))
                 .isInstanceOfSatisfying(ApiException.class, e -> assertThat(e.status).isEqualTo(404));

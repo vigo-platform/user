@@ -88,7 +88,9 @@ notification bridge can send the invitation link without a User→Notification c
 The Notification Service and its contract were **not modified**; it currently accepts
 only `producer=auth-service` OTP commands, so coach emails need a future bridge.
 
-Static `/me` matchers precede numeric account-ID routes. The coach list and individual public coach profiles are accessible without authentication via **GET**. Unimplemented routes/methods are denied by default. REST JSON requests and responses use camelCase and bilingual English/Persian envelopes; actuator endpoints intentionally use their standard formats. User/coach pagination is deterministic, size 1–100, page >=0. Approval/rejection only from PENDING; editing REJECTED re-submits to PENDING, approved edits apply immediately. `min_plan_price=null` and `active_athletes_count=0` are placeholders, not a plan/subscription backend.
+Static `/me` matchers precede numeric account-ID routes. The coach list and individual public coach profiles are accessible without authentication via **GET**. Unimplemented routes/methods are denied by default. REST JSON uses bilingual English/Persian envelopes and generally uses camelCase. Actuator endpoints use their standard formats. User/coach pagination is deterministic, size 1–100, page >=0. Approval/rejection only from PENDING. Editing REJECTED re-submits to PENDING, and approved edits apply immediately. `minPlanPrice` and `activeAthletesCount` are placeholders.
+
+Both public coach endpoints return `has_active_plan`, `price`, `compare_at_price`, and `currency`. Only active, unarchived plans qualify. The eligible plan with the lowest ID sets the currency for the quote. Within that currency, the lowest price wins, with ties broken by plan ID. `compare_at_price` is nullable. When no plan qualifies, `has_active_plan` is `false` and both amounts and `currency` are `null`.
 
 ## Contract decisions / intentional overrides
 
@@ -315,19 +317,50 @@ Auth must use contract 3.1.0 numeric subjects, production mTLS, and user status/
 
 | Route | Access |
 |---|---|
+| GET /api/v1/coaches/{coach_id} | Public coach profile with all public plan summaries in `data.plans` |
+| GET /api/v1/coaches/{coach_id}/plan/{plan_id} | Public details for one plan owned by the coach |
 | GET/POST /api/v1/coaches/me/plans | COACH; create requires an approved coach |
 | GET /api/v1/coaches/me/plan/form-options | COACH, returns active `includeOptions`, full `generalFields`, and `features` with only `id`, `code`, and `label` |
 | GET /api/v1/coaches/me/plan/form-options/features/{id} | COACH, returns the active feature and all its active field definitions in `fields` |
 | PUT /api/v1/coaches/me/plans/{plan_id} | owner COACH only |
-| DELETE /api/v1/coaches/me/plans/{plan_id} | owner; archives (soft delete) |
-| POST /api/v1/coaches/me/plans/{plan_id}/activate | owner; reactivates an archived plan |
+| DELETE /api/v1/coaches/me/plans/{plan_id} | Owner COACH, archives the plan |
+| POST /api/v1/coaches/me/plans/{plan_id}/unarchive | Owner COACH, restores the plan. `/activate` is a legacy alias |
+| PATCH /api/v1/admin/plans/{plan_id}/status | ADMIN, sets `isActive` with `{"isActive": true}` or `{"isActive": false}` |
+
+The public routes require an approved coach with an active COACH account.
+A plan appears when `is_active = true` and `is_archived = false`. The profile
+returns `plans: []` when the coach has no public plans. Summaries are ordered by
+`display_order`, then `id`. Each summary includes up to three selected feature
+labels (`id`, `code`, `label`) ordered by the feature catalog's `display_order`,
+then feature `id`.
+
+Plan detail includes the description, first delivery time, included services,
+all selected features with their saved field values, and `general_fields` for
+saved plan-level values. Select fields return their saved codes in `value` and
+the corresponding display labels in `selected_options`. An unavailable plan or
+a plan belonging to a different coach returns `404 NOT_FOUND`.
+
+Both public plan views include `price`, `compare_at_price` and `currency` in the
+plan's stored currency. For `IRR` plans, `price_rial` and `compare_at_price_rial`
+contain the rial amounts. For other currencies both rial fields are `null`.
 
 Ownership always comes from the token: a plan mutation addressed at another
 coach's plan returns 403, and an unknown plan returns 404. Plan writes accept
 `includes` as a list of codes from `plan_include_catalog`. The initial catalog
 contains `WORKOUT`, `NUTRITION`, `SUPPLEMENT`, and `CHAT_SUPPORT`. Existing include
-selections remain readable when an option is deactivated. Reactivate archived
+selections remain readable when an option is deactivated. Unarchive archived
 plans before editing (`409 PLAN_ARCHIVED`).
+
+New plans start with `isActive: false` and `isArchived: false`. The plan
+response exposes both flags and a derived `status`. The admin controls activation
+and the owning coach controls archiving. Plans are public and available for
+purchase only while active and unarchived. V12 keeps previously public plans
+active and preserves the owner's ability to restore legacy archived plans.
+
+Plan amounts use `currency`, an uppercase three-letter code that defaults to
+`IRR` on create. The current currency is used when an update omits it. The
+plan response includes `price` and nullable `compareAtPrice`. Changing a plan's
+currency clears any previous comparison price.
 
 On create and update, `fieldValues` contains entries with `fieldId` and `value`.
 Supply all active `generalFields`, including `PLAN_LEVEL`. The form-options

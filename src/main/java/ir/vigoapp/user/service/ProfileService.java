@@ -7,9 +7,13 @@ import ir.vigoapp.user.dto.Views;
 import ir.vigoapp.user.entity.CoachProfile;
 import ir.vigoapp.user.entity.UserAccount;
 import ir.vigoapp.user.outbox.OutboxWriter;
+import ir.vigoapp.user.repository.CoachPlanRepository;
+import ir.vigoapp.user.repository.CoachPlanRepository.ActivePlanPrice;
 import ir.vigoapp.user.repository.CoachRepository;
 import ir.vigoapp.user.repository.UserRepository;
+import ir.vigoapp.user.service.plan.PublicCoachPlanService;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.data.domain.*;
 import org.springframework.data.jpa.domain.Specification;
@@ -18,11 +22,15 @@ import org.slf4j.LoggerFactory;
 import tools.jackson.databind.ObjectMapper;
 import java.time.Instant;
 import java.util.*;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 @Service @Transactional
 @RequiredArgsConstructor
 public class ProfileService {
  private static final Logger log=LoggerFactory.getLogger(ProfileService.class);
  private final UserRepository users;private final CoachRepository coaches;private final OutboxWriter events;private final ObjectMapper json;
+ private final CoachPlanRepository plans;
+ private final PublicCoachPlanService publicPlans;
  private UserAccount user(long id){return users.findById(id).orElseThrow(ApiException::notFound);}
  private UserAccount locked(long id){return users.lock(id).orElseThrow(ApiException::notFound);}
  private UserAccount activeLocked(long id){var u=locked(id);if(u.getStatus()!=AccountStatus.ACTIVE)throw ApiException.forbidden();return u;}
@@ -56,17 +64,33 @@ public class ProfileService {
   var c=new CoachProfile();c.setUser(u);fill(c,r);coaches.saveAndFlush(c);return Views.coach(c,true,json);
  }
  public Map<String,Object> own(long id){return Views.coach(coach(id),true,json);}
+ @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ)
  public Map<String,Object> publicCoach(long id){
   var c=coach(id);var u=org.hibernate.Hibernate.unproxy(c.getUser(),UserAccount.class);
   if(c.getStatus()!=CoachStatus.APPROVED||u.getStatus()!=AccountStatus.ACTIVE||u.getRole()!=Role.COACH)throw ApiException.notFound();
-  return Views.coach(c,false,json);
+  var price=plans.findCheapestActivePrices(List.of(id)).stream().findFirst().orElse(null);
+  var view=publicCoachView(c,price);
+  view.put("plans",publicPlans.summariesForPublicCoach(id));
+  return view;
  }
 
  @Transactional(readOnly=true)
  public Views.Paged<Map<String,Object>> listPublicCoaches(int page,int size){
   var pageable=PageRequest.of(page,size,Sort.by("createdAt").descending().and(Sort.by("userId")));
   var result=coaches.findAllByStatusAndUser_StatusAndUser_Role(CoachStatus.APPROVED,AccountStatus.ACTIVE,Role.COACH,pageable);
-  return Views.page(result,c->Views.coach(c,false,json));
+  var coachIds=result.getContent().stream().map(CoachProfile::getUserId).toList();
+  Map<Long,ActivePlanPrice> prices=coachIds.isEmpty()?Map.of():plans.findCheapestActivePrices(coachIds).stream()
+   .collect(Collectors.toMap(ActivePlanPrice::getCoachId,Function.identity()));
+  return Views.page(result,c->publicCoachView(c,prices.get(c.getUserId())));
+ }
+
+ private Map<String,Object> publicCoachView(CoachProfile coach,ActivePlanPrice price){
+  var view=Views.coach(coach,false,json);
+  view.put("has_active_plan",price!=null);
+  view.put("price",price==null?null:price.getPrice());
+  view.put("compare_at_price",price==null?null:price.getCompareAtPrice());
+  view.put("currency",price==null?null:price.getCurrency());
+  return view;
  }
 
  public Map<String,Object> adminCoach(long id){return Views.coach(coach(id),true,json);}

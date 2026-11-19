@@ -35,7 +35,7 @@ import java.util.stream.Collectors;
  *
  * <p>Ownership is always taken from the authenticated actor, never from the
  * request body, so a coach cannot create or edit a plan that belongs to someone
- * else. Customers can only read plans; every write path is coach-only.
+ * else. Activation is managed through the admin API.
  */
 @Service
 @Transactional
@@ -55,7 +55,6 @@ public class CoachPlanService {
         var selectedOptions = resolveIncludes(request.includes(), Set.of());
         var plan = new CoachPlan(coach);
         apply(plan, request);
-        plan.setStatus(PlanStatus.ACTIVE);
         plans.saveAndFlush(plan);
         replaceIncludes(plan, selectedOptions);
         selections.replace(plan.getId(), request.featureIds(), request.fieldValues());
@@ -64,8 +63,8 @@ public class CoachPlanService {
 
     public Map<String, Object> update(long coachId, Long planId, Requests.Plan request) {
         validate(request);
-        var plan = ownedPlan(coachId, planId, true);
-        if (plan.getStatus() == PlanStatus.ARCHIVED) throw ApiException.conflict("PLAN_ARCHIVED");
+        var plan = lockOwnedPlan(coachId, planId);
+        if (plan.isArchived()) throw ApiException.conflict("PLAN_ARCHIVED");
         validateSelections(request);
         var alreadySelected = new HashSet<>(includes.findCodesForPlan(planId));
         var selectedOptions = resolveIncludes(request.includes(), alreadySelected);
@@ -79,17 +78,25 @@ public class CoachPlanService {
 
     /** Soft delete: the plan leaves the marketplace, running subscriptions are untouched. */
     public void archive(long coachId, Long planId) {
-        var plan = ownedPlan(coachId, planId, true);
-        if (plan.getStatus() == PlanStatus.ARCHIVED) throw ApiException.conflict("INVALID_STATE");
-        plan.setStatus(PlanStatus.ARCHIVED);
+        var plan = lockOwnedPlan(coachId, planId);
+        if (plan.isArchived()) throw ApiException.conflict("INVALID_STATE");
+        plan.setArchived(true);
         plan.setUpdatedAt(Instant.now());
         plans.flush();
     }
 
-    public void activate(long coachId, Long planId) {
-        var plan = ownedPlan(coachId, planId, true);
-        if (plan.getStatus() == PlanStatus.ACTIVE) throw ApiException.conflict("INVALID_STATE");
-        plan.setStatus(PlanStatus.ACTIVE);
+    public void unarchive(long coachId, Long planId) {
+        var plan = lockOwnedPlan(coachId, planId);
+        if (!plan.isArchived()) throw ApiException.conflict("INVALID_STATE");
+        plan.setArchived(false);
+        plan.setUpdatedAt(Instant.now());
+        plans.flush();
+    }
+
+    public void setActive(Long planId, boolean active) {
+        var plan = plans.lock(planId).orElseThrow(ApiException::notFound);
+        if (plan.isActive() == active) return;
+        plan.setActive(active);
         plan.setUpdatedAt(Instant.now());
         plans.flush();
     }
@@ -101,18 +108,18 @@ public class CoachPlanService {
                 .orElseGet(List::of);
     }
 
-    /** Public catalogue: only active plans of approved, active coaches. */
+    /** Public catalogue of active, unarchived plans from approved, active coaches. */
     @Transactional(readOnly = true)
     public Views.Paged<Map<String, Object>> marketplace(int page, int size, Long coachId) {
         var pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
         Page<CoachPlan> result;
         if (coachId != null) {
             if (!isPublicCoach(coachId)) return Views.page(Page.empty(pageable), this::view);
-            result = plans.findByCoachIdAndStatus(coachId, PlanStatus.ACTIVE, pageable);
+            result = plans.findByCoachIdAndActiveTrueAndArchivedFalse(coachId, pageable);
         } else {
             var approved = coaches.findApprovedCoachIds(CoachStatus.APPROVED, AccountStatus.ACTIVE, Role.COACH);
             if (approved.isEmpty()) return Views.page(Page.empty(pageable), this::view);
-            result = plans.findByStatusAndCoachIdIn(PlanStatus.ACTIVE, approved, pageable);
+            result = plans.findByCoachIdInAndActiveTrueAndArchivedFalse(approved, pageable);
         }
         return Views.page(result, this::view);
     }
@@ -128,7 +135,8 @@ public class CoachPlanService {
     @Transactional(readOnly = true)
     public CoachPlan requirePurchasable(Long planId) {
         var plan = plans.findById(planId).orElseThrow(ApiException::notFound);
-        if (plan.getStatus() != PlanStatus.ACTIVE) throw ApiException.conflict("PLAN_ARCHIVED");
+        if (plan.isArchived()) throw ApiException.conflict("PLAN_ARCHIVED");
+        if (!plan.isActive()) throw ApiException.conflict("PLAN_INACTIVE");
         return plan;
     }
 
@@ -147,19 +155,23 @@ public class CoachPlanService {
     }
 
     /** 404 when the plan is unknown, 403 when it exists but belongs to another coach. */
-    private CoachPlan ownedPlan(long coachId, Long planId, boolean lock) {
-        var plan = (lock ? plans.lock(planId) : plans.findById(planId)).orElseThrow(ApiException::notFound);
-        boolean owned = coaches.findByUserId(coachId)
-                .filter(coach -> plan.getCoachId().equals(coach.getUserId()))
-                .isPresent();
-        if (!owned) throw ApiException.forbidden();
+    private CoachPlan lockOwnedPlan(long coachId, Long planId) {
+        var plan = plans.lock(planId).orElseThrow(ApiException::notFound);
+        if (plan.getCoachId() != coachId) throw ApiException.forbidden();
         return plan;
     }
 
     private void apply(CoachPlan plan, Requests.Plan r) {
+        String currency = r.currency() == null ? plan.getCurrency() : r.currency();
+        if ("IRR".equals(currency) && r.price() < 10_000) {
+            throw new ApiException(400, "VALIDATION_FAILED",
+                    "Plan price in IRR must be at least 10000", "قیمت پلن به ریال باید حداقل ۱۰۰۰۰ باشد");
+        }
+        if (!currency.equals(plan.getCurrency())) plan.setCompareAtPrice(null);
+        plan.setCurrency(currency);
         plan.setTitle(r.title().strip());
         plan.setDescription(r.description() == null || r.description().isBlank() ? null : r.description().strip());
-        plan.setPriceRial(r.price());
+        plan.setPrice(r.price());
         plan.setDurationDays(r.durationDays());
         plan.setUpdatedAt(Instant.now());
     }
@@ -263,13 +275,16 @@ public class CoachPlanService {
         v.put("coachId", plan.getCoachId());
         v.put("title", plan.getTitle());
         v.put("description", plan.getDescription());
-        v.put("price", plan.getPriceRial());
+        v.put("price", plan.getPrice());
+        v.put("compareAtPrice", plan.getCompareAtPrice());
         v.put("currency", plan.getCurrency());
         v.put("durationDays", plan.getDurationDays());
         v.put("includes", includes.findCodesForPlan(plan.getId()));
         v.put("featureIds", selections.findFeatureIds(plan.getId()));
         v.put("fieldValues", selections.findFieldValues(plan.getId()));
         v.put("status", plan.getStatus());
+        v.put("isActive", plan.isActive());
+        v.put("isArchived", plan.isArchived());
         v.put("createdAt", plan.getCreatedAt());
         v.put("updatedAt", plan.getUpdatedAt());
         return v;

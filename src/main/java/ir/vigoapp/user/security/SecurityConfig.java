@@ -67,7 +67,9 @@ public class SecurityConfig {
     .requestMatchers(POST,"/api/v1/coaches/me/plans").hasRole("COACH")
     .requestMatchers(PUT,"/api/v1/coaches/me/plans/{plan_id}").hasRole("COACH")
     .requestMatchers(DELETE,"/api/v1/coaches/me/plans/{plan_id}").hasRole("COACH")
-    .requestMatchers(POST,"/api/v1/coaches/me/plans/{plan_id}/activate").hasRole("COACH")
+    .requestMatchers(POST,"/api/v1/coaches/me/plans/{plan_id}/unarchive",
+     "/api/v1/coaches/me/plans/{plan_id}/activate").hasRole("COACH")
+    .requestMatchers(PATCH,"/api/v1/admin/plans/{plan_id}/status").hasRole("ADMIN")
     .requestMatchers(GET,"/api/v1/users/me").authenticated()
     .requestMatchers(PUT,"/api/v1/users/me").authenticated()
     .requestMatchers(POST,"/api/v1/coaches/me/profile").hasRole("ATHLETE")
@@ -77,7 +79,8 @@ public class SecurityConfig {
     .requestMatchers(PATCH,"/api/v1/users/{id}/status").hasRole("ADMIN")
     .requestMatchers(GET,"/api/v1/admin/coaches","/api/v1/admin/coaches/{id}").hasRole("ADMIN")
     .requestMatchers(POST,"/api/v1/admin/coaches/{id}/approve","/api/v1/admin/coaches/{id}/reject").hasRole("ADMIN")
-    .requestMatchers(GET,"/api/v1/coaches","/api/v1/coaches/{id}").permitAll()
+    .requestMatchers(GET,"/api/v1/coaches","/api/v1/coaches/{id}",
+     "/api/v1/coaches/{coach_id}/plan/{plan_id}").permitAll()
     .requestMatchers(GET,"/actuator/health").permitAll()
     .requestMatchers(GET,"/actuator/health/liveness","/actuator/health/readiness","/actuator/prometheus")
     .access((authentication,context)->new AuthorizationDecision(

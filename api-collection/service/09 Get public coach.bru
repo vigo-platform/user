@@ -12,6 +12,17 @@ get {
 
 tests {
   test("Expected success status", function () { expect(res.getStatus()).to.equal(200); });
+  test("Returns public plan summaries with up to three feature labels", function () {
+    const { data } = res.getBody();
+    expect(data.plans).to.be.an("array");
+    for (const plan of data.plans) {
+      expect(plan).to.include.all.keys("id", "title", "summary", "price_rial", "compare_at_price_rial",
+        "duration_days", "is_recommended", "display_order", "features");
+      expect(plan.features).to.be.an("array");
+      expect(plan.features.length).to.be.at.most(3);
+      for (const feature of plan.features) expect(feature).to.have.all.keys("id", "code", "label");
+    }
+  });
 }
 
 docs {
@@ -42,6 +53,26 @@ docs {
       "coachId": 10,
       "avatarUrl": null,
       "minPlanPrice": null,
+      "has_active_plan": true,
+      "price": 1000000,
+      "compare_at_price": 1250000,
+      "currency": "IRR",
+      "plans": [
+        {
+          "id": 1,
+          "title": "Strength plan",
+          "summary": "A 30-day training plan",
+          "price": 1000000,
+          "compare_at_price": 1250000,
+          "currency": "IRR",
+          "price_rial": 1000000,
+          "compare_at_price_rial": 1250000,
+          "duration_days": 30,
+          "is_recommended": true,
+          "display_order": 10,
+          "features": [{"id": 1, "code": "PERSONALIZED_PLAN", "label": "برنامه شخصی‌سازی‌شده"}]
+        }
+      ],
       "activeAthletesCount": 0,
       "createdAt": "2026-10-31T12:00:00Z",
       "updatedAt": "2026-10-31T12:00:00Z"

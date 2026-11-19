@@ -5,9 +5,11 @@ import ir.vigoapp.user.dto.Requests;
 import ir.vigoapp.user.entity.CoachProfile;
 import ir.vigoapp.user.entity.UserAccount;
 import ir.vigoapp.user.outbox.OutboxWriter;
+import ir.vigoapp.user.repository.CoachPlanRepository;
 import ir.vigoapp.user.repository.CoachRepository;
 import ir.vigoapp.user.repository.UserRepository;
 import ir.vigoapp.user.service.ProfileService;
+import ir.vigoapp.user.service.plan.PublicCoachPlanService;
 import org.junit.jupiter.api.*;
 import tools.jackson.databind.json.JsonMapper;
 import java.util.*;
@@ -15,7 +17,9 @@ import static org.mockito.Mockito.*;
 import static org.assertj.core.api.Assertions.*;
 class ProfileServiceTest {
  UserRepository users=mock(UserRepository.class);CoachRepository coaches=mock(CoachRepository.class);OutboxWriter events=mock(OutboxWriter.class);
- ProfileService service=new ProfileService(users,coaches,events,JsonMapper.builder().findAndAddModules().build());
+ CoachPlanRepository plans=mock(CoachPlanRepository.class);
+ ProfileService service=new ProfileService(users,coaches,events,JsonMapper.builder().findAndAddModules().build(),plans,
+  mock(PublicCoachPlanService.class));
  UserAccount u;CoachProfile c;long admin=2L;
  @BeforeEach void init(){u=new UserAccount();u.setId(1L);u.setDisplayName("Test Athlete");c=new CoachProfile();c.setUser(u);c.setUserId(u.getId());c.setDisplayName("Test Coach");c.setSpecialties("[\"fitness\"]");c.setBio("A synthetic biography long enough.");
   when(users.lock(u.getId())).thenReturn(Optional.of(u));when(coaches.findByUserId(u.getId())).thenReturn(Optional.of(c));}
@@ -32,6 +36,8 @@ class ProfileServiceTest {
   assertThatThrownBy(()->service.publicCoach(u.getId())).isInstanceOf(ApiException.class);
   c.setStatus(CoachStatus.APPROVED);u.setRole(Role.COACH);
   var view=service.publicCoach(u.getId());assertThat(view).doesNotContainKeys("status","rejectionReason");assertThat(view.get("minPlanPrice")).isNull();assertThat(view.get("activeAthletesCount")).isEqualTo(0);
+  assertThat(view).containsEntry("has_active_plan",false).containsEntry("price",null)
+   .containsEntry("compare_at_price",null).containsEntry("currency",null).containsEntry("plans",List.of());
   u.setStatus(AccountStatus.SUSPENDED);assertThatThrownBy(()->service.publicCoach(u.getId())).isInstanceOf(ApiException.class);
  }
  @Test void legacyCertificatesUseCamelCaseInTheProfileResponse(){

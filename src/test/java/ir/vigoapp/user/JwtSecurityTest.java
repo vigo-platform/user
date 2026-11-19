@@ -1,5 +1,6 @@
 package ir.vigoapp.user;
 import ir.vigoapp.user.api.*;
+import ir.vigoapp.user.api.plan.PublicCoachPlanController;
 import ir.vigoapp.user.domain.*;
 import ir.vigoapp.user.dto.Requests;
 import ir.vigoapp.user.dto.Views;
@@ -8,6 +9,7 @@ import ir.vigoapp.user.entity.UserAccount;
 import ir.vigoapp.user.repository.UserRepository;
 import ir.vigoapp.user.security.SecurityConfig;
 import ir.vigoapp.user.service.ProfileService;
+import ir.vigoapp.user.service.plan.PublicCoachPlanService;
 import org.junit.jupiter.api.*;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Bean;
@@ -29,7 +31,7 @@ import tools.jackson.databind.json.JsonMapper;
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
-@WebMvcTest(controllers={UserController.class, CoachPlanController.class, ir.vigoapp.user.api.plan.CoachPlanController.class},properties={"app.jwt.jwks-uri=https://auth.example.test/jwks","app.jwt.issuer=https://auth.example.test","app.jwt.audience=vigo-api"})
+@WebMvcTest(controllers={UserController.class, CoachPlanController.class, AdminCoachPlanController.class, ir.vigoapp.user.api.plan.CoachPlanController.class, PublicCoachPlanController.class},properties={"app.jwt.jwks-uri=https://auth.example.test/jwks","app.jwt.issuer=https://auth.example.test","app.jwt.audience=vigo-api"})
 @Import({SecurityConfig.class,JwtSecurityTest.Keys.class})
 class JwtSecurityTest {
  static final String ISSUER="https://auth.example.test";static final long ID=1L;
@@ -37,6 +39,7 @@ class JwtSecurityTest {
  @Autowired MockMvc mvc;@MockitoBean ProfileService profiles;@MockitoBean UserRepository users;
  @MockitoBean ir.vigoapp.user.service.CoachPlanService plans;
  @MockitoBean ir.vigoapp.user.service.plan.CoachPlanService formOptions;
+ @MockitoBean PublicCoachPlanService publicPlans;
 
  @Test void coachPlanReadsRequireCoachRole() throws Exception {
   var paths = List.of("/api/v1/coaches/me/plans", "/api/v1/coaches/me/plan/form-options",
@@ -63,7 +66,7 @@ class JwtSecurityTest {
     "fieldValues":[{"fieldId":12,"value":["BEGINNER"]}]}
    """;
   var level = new PlanFieldValue(12, JsonMapper.builder().build().readTree("[\"BEGINNER\"]"));
-  var request = new Requests.Plan("Workout plan", null, 100000L, 30, List.of("WORKOUT"), List.of(), List.of(level));
+  var request = new Requests.Plan("Workout plan", null, 100000L, 30, List.of("WORKOUT"), List.of(), List.of(level), null);
 
   mvc.perform(post("/api/v1/coaches/me/plans").header("Authorization", "Bearer " + coachToken)
     .contentType("application/json").content(body)).andExpect(status().isCreated());
@@ -71,6 +74,37 @@ class JwtSecurityTest {
     .contentType("application/json").content(body)).andExpect(status().isOk());
   verify(plans).create(ID, request);
   verify(plans).update(ID, 1L, request);
+ }
+ @Test void adminsSetActivationAndOnlyCoachesCanArchiveOrRestore() throws Exception {
+  String adminPath = "/api/v1/admin/plans/1/status";
+  String coachPath = "/api/v1/coaches/me/plans/1";
+  mvc.perform(patch(adminPath)).andExpect(status().isUnauthorized());
+
+  var account = users.findById(ID).orElseThrow();
+  account.setRole(Role.COACH);
+  String coach = "Bearer " + good("COACH");
+  mvc.perform(patch(adminPath).header("Authorization", coach).contentType("application/json")
+    .content("{\"isActive\":true}")).andExpect(status().isForbidden());
+  verifyNoInteractions(plans);
+  mvc.perform(delete(coachPath).header("Authorization", coach)).andExpect(status().isOk());
+  mvc.perform(post(coachPath + "/unarchive").header("Authorization", coach)).andExpect(status().isOk());
+  mvc.perform(post(coachPath + "/activate").header("Authorization", coach)).andExpect(status().isOk());
+  verify(plans).archive(ID, 1L);
+  verify(plans, times(2)).unarchive(ID, 1L);
+
+  account.setRole(Role.ADMIN);
+  String admin = "Bearer " + good("ADMIN");
+  mvc.perform(delete(coachPath).header("Authorization", admin)).andExpect(status().isForbidden());
+  mvc.perform(post(coachPath + "/unarchive").header("Authorization", admin)).andExpect(status().isForbidden());
+  mvc.perform(patch(adminPath).header("Authorization", admin).contentType("application/json")
+    .content("{}")).andExpect(status().isBadRequest());
+  mvc.perform(patch(adminPath).header("Authorization", admin).contentType("application/json")
+    .content("{\"isActive\":true}")).andExpect(status().isOk());
+  mvc.perform(patch(adminPath).header("Authorization", admin).contentType("application/json")
+    .content("{\"isActive\":false}")).andExpect(status().isOk());
+  verify(plans).setActive(1L, true);
+  verify(plans).setActive(1L, false);
+  verifyNoMoreInteractions(plans);
  }
  static KeyPair key(){try{var generator=KeyPairGenerator.getInstance("RSA");generator.initialize(2048);return generator.generateKeyPair();}catch(Exception e){throw new IllegalStateException(e);}}
  @TestConfiguration static class Keys {
@@ -132,6 +166,17 @@ class JwtSecurityTest {
    .andExpect(jsonPath("$.data.size").value(5)).andExpect(jsonPath("$.data.totalElements").value(6))
    .andExpect(jsonPath("$.data.totalPages").value(2)).andExpect(jsonPath("$.data.content[0].coachId").value(ID));
   mvc.perform(post("/api/v1/coaches")).andExpect(status().isUnauthorized());
+ }
+ @Test void publicPlanDetailAllowsOnlyGetAndRequiresPositiveNumericIds()throws Exception{
+  String path="/api/v1/coaches/"+ID+"/plan/2";
+  mvc.perform(get(path)).andExpect(status().isOk());
+  mvc.perform(post(path)).andExpect(status().isUnauthorized());
+  for(String invalid:List.of("0/plan/2","abc/plan/2",ID+"/plan/0",ID+"/plan/abc")){
+   mvc.perform(get("/api/v1/coaches/"+invalid)).andExpect(status().isBadRequest())
+    .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+  }
+  verify(publicPlans).getDetail(ID,2L);
+  verifyNoMoreInteractions(publicPlans);
  }
  @Test void coachListRejectsInvalidPagination()throws Exception{
   for(var invalid:Map.of("page",List.of("-1","abc"),"size",List.of("0","101","abc")).entrySet()){

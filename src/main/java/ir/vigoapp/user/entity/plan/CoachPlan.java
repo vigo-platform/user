@@ -7,7 +7,6 @@ import lombok.Setter;
 import ir.vigoapp.user.domain.plan.PlanStatus;
 import ir.vigoapp.user.entity.CoachProfile;
 import jakarta.persistence.Column;
-import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.ForeignKey;
@@ -49,11 +48,11 @@ public class CoachPlan {
     @Column(columnDefinition = "text")
     private String description;
 
-    @Column(name = "price_rial", nullable = false)
-    private long priceRial;
+    @Column(nullable = false)
+    private long price;
 
-    @Column(name = "compare_at_price_rial")
-    private Long compareAtPriceRial;
+    @Column(name = "compare_at_price")
+    private Long compareAtPrice;
 
     @Column(name = "currency", nullable = false, length = 3)
     private String currency = "IRR";
@@ -64,9 +63,11 @@ public class CoachPlan {
     @Column(name = "first_delivery_days")
     private Integer firstDeliveryDays;
 
-    @Convert(converter = PlanStatus.ActiveFlagConverter.class)
     @Column(name = "is_active", nullable = false)
-    private PlanStatus status = PlanStatus.ARCHIVED;
+    private boolean active;
+
+    @Column(name = "is_archived", nullable = false)
+    private boolean archived;
 
     @Column(name = "is_recommended", nullable = false)
     private boolean recommended;
@@ -86,5 +87,10 @@ public class CoachPlan {
     public CoachPlan(CoachProfile coach) {
         this.coach = coach;
         this.coachId = coach.getUserId();
+    }
+
+    public PlanStatus getStatus() {
+        if (archived) return PlanStatus.ARCHIVED;
+        return active ? PlanStatus.ACTIVE : PlanStatus.INACTIVE;
     }
 }
