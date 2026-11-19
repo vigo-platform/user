@@ -8,7 +8,7 @@ Java 21, Spring Boot **4.1.2**, Maven wrapper 3.9.16 copied from API Gateway. Gr
 |---|---|---|
 | SCRUM-40 — Project skeleton, DB migrations, Docker Compose, health metrics | `pom.xml`, wrapper, `domain/`, `V1__users_coaches_outbox.sql`, Dockerfile, compose.yml, actuator/Prometheus | compile/package; PostgreSQL migration IT; static Compose validation |
 | SCRUM-41 — Account registration for athletes and coaches | All eight `UserGrpcEndpoint` RPCs and `CredentialService`; gRPC CreateUser creates ATHLETE/ACTIVE; authenticated coach application creates PENDING without changing role | CredentialServiceTest, GrpcEndpointTest, uniqueness/CAS IT |
-| SCRUM-42 — RBAC/security filter chain | `SecurityConfig`: actual RS256 validation, issuer/audience/UUID/role, authoritative DB status and role | JwtSecurityTest uses real signed RSA tokens, not mock JWT authentication |
+| SCRUM-42 — RBAC/security filter chain | `SecurityConfig`: RS256 signature, issuer, audience, numeric subject and role validation against the database | JwtSecurityTest uses real signed RSA tokens |
 | SCRUM-43 — Admin user list, vetting, suspension | UserController/ProfileService, locked state transitions, self/admin protections | ProfileServiceTest; secured HTTP tests |
 | SCRUM-44 — Self profile and public coach profile | readonly email/phone, validation, self views, approved-active public view | ProfileServiceTest, validation and route-order HTTP tests |
 | SCRUM-45 — Transactional outbox/Kafka user.events | OutboxWriter/OutboxRelay; aggregate sequences, stable IDs, head-of-line leasing/fencing, broker ACK before mark | rollback, retry/reclaim, concurrent worker, real Kafka IT |
@@ -22,7 +22,7 @@ Java 21, Spring Boot **4.1.2**, Maven wrapper 3.9.16 copied from API Gateway. Gr
 - `GET /api/v1/users`, `GET /api/v1/users/{user_id}`, `PATCH /api/v1/users/{user_id}/status` — ADMIN.
 - `POST /api/v1/coaches/me/profile` — ATHLETE only, creates PENDING.
 - `GET`, `PUT /api/v1/coaches/me` — applicant ATHLETE or COACH.
-- `GET /api/v1/coaches?page=0&size=20` — public list of approved coaches with active `COACH` accounts, newest first. `page` starts at 0 and `size` accepts 1–100. The response contains `data.content`, `data.page`, `data.size`, `data.total_elements` and `data.total_pages`.
+- `GET /api/v1/coaches?page=0&size=20` — public list of approved coaches with active `COACH` accounts, newest first. `page` starts at 0 and `size` accepts 1–100. The response contains `data.content`, `data.page`, `data.size`, `data.totalElements` and `data.totalPages`.
 - `GET /api/v1/coaches/{coach_id}` — anonymous, APPROVED + ACTIVE + authoritative COACH only. Never returns review status/rejection reason.
 - `GET /api/v1/admin/coaches`, `GET /api/v1/admin/coaches/{coach_id}`, `POST /api/v1/admin/coaches/{coach_id}/approve`, `POST .../reject` — ADMIN.
 - Actuator runs on a separate management server. `MANAGEMENT_PORT` defaults to **8082** and `MANAGEMENT_ADDRESS` defaults to `127.0.0.1`. Compose binds the management server to `0.0.0.0` inside the container so Prometheus on the shared network can scrape `user:8082/actuator/prometheus`. Health shows the aggregate status. Readiness checks the readiness state, database, and gRPC server. Liveness checks the liveness state. Docker checks `/actuator/health` on the configured management port. The `logging: "true"` label enables the shared Vector collector.
@@ -88,14 +88,14 @@ notification bridge can send the invitation link without a User→Notification c
 The Notification Service and its contract were **not modified**; it currently accepts
 only `producer=auth-service` OTP commands, so coach emails need a future bridge.
 
-Static `/me` matchers precede UUID routes. The coach list and individual public coach profiles are accessible without authentication via **GET**. Unimplemented routes/methods are denied by default. JSON uses snake_case and bilingual English/Persian envelopes; actuator endpoints intentionally use their standard formats. User/coach pagination is deterministic, size 1–100, page >=0. Approval/rejection only from PENDING; editing REJECTED re-submits to PENDING, approved edits apply immediately. `min_plan_price=null` and `active_athletes_count=0` are placeholders, not a plan/subscription backend.
+Static `/me` matchers precede numeric account-ID routes. The coach list and individual public coach profiles are accessible without authentication via **GET**. Unimplemented routes/methods are denied by default. REST JSON requests and responses use camelCase and bilingual English/Persian envelopes; actuator endpoints intentionally use their standard formats. User/coach pagination is deterministic, size 1–100, page >=0. Approval/rejection only from PENDING; editing REJECTED re-submits to PENDING, approved edits apply immediately. `min_plan_price=null` and `active_athletes_count=0` are placeholders, not a plan/subscription backend.
 
 ## Contract decisions / intentional overrides
 
 Read alongside sibling `api-contracts/rest/user.yaml`, `grpc/users.proto`, `events.md`, `docs/user-storage-scope.md` and `auth/docs/user-grpc.md`.
 
-1. Each account has a positive BIGINT `id` used by **users-grpc-contract:3.1.0** as `user_id`, and a unique UUID `public_id` used by REST and as the Kafka key and aggregate ID.
-2. User validates signed JWTs directly. Auth access tokens (`typ=at+jwt`, `token_use=access`) carry the numeric user ID in `sub` and a `roles` array. User also accepts the existing UUID subject and singular `role` format. Both formats resolve to the account's public UUID for REST operations. Privileges require a signed role that matches the current database role. Every protected request checks that the account exists and is ACTIVE.
+1. Each account uses its positive BIGINT `users.id` across REST, gRPC and account events. REST `userId`, `coachId`, and account reviewer IDs are JSON numbers.
+2. User validates signed Auth access tokens (`typ=at+jwt`, `token_use=access`). The `sub` claim is the decimal string of `users.id` and `roles` is an array. Privileges require a signed role that matches the current database role. Every protected request checks that the account exists and is ACTIVE.
 3. Account/profile creation is synchronous and atomic through Auth→User CreateUser. User emits UserRegistered on user.events after creating the account/profile. Auth handles login and session revocation.
 4. Canonical email is stripped and lowercased with Locale.ROOT. Phones are stripped **E.164**, consistently for registration/check/login; local `09...` input is rejected. REST's previous `09...` representation is superseded by E.164 nullable phone. Optional missing email is null (phone-only account allowed). REST phone is null until verified; registration sets email_verified=true only when email is supplied, and phone_verified=false. Approved D5 requires restricted Auth CreateUser to attest that the supplied email already passed OTP verification before signup; User does not verify OTP itself. There is no verification API in this scope. PostgreSQL lower-email unique index and phone unique index enforce race-safe uniqueness without CITEXT. Existence checks remain advisory.
 5. Credential version starts at 1. A single conditional UPDATE swaps hash/version/timestamp only for the expected version; a lost race is gRPC ABORTED, missing account NOT_FOUND. `CREDENTIALS_MAX_AGE` is ISO-8601 duration (`P90D`, for example), defaults **PT0S = disabled**; expired is explicitly computed in every UserAuthInfo response, independently of account status. No password content transformation is performed.
@@ -103,8 +103,8 @@ Read alongside sibling `api-contracts/rest/user.yaml`, `grpc/users.proto`, `even
 
 ## Coach identifier round trips
 
-`coach_id` is always the persisted account `public_id` UUID, never the numeric
-coach-profile primary key or a value read from an uninitialized Hibernate proxy.
+`coachId` is the persisted numeric account ID, which is also the primary key
+of the coach profile.
 The same ID returned by either coach list is accepted by coach detail/admin
 routes. Only PENDING applications can be approved/rejected: an already-approved
 public coach correctly returns `409 INVALID_STATE`, not a fabricated `404`.
@@ -142,15 +142,16 @@ POST /api/v1/coaches/applications
 Content-Type: application/json
 
 {
-  "full_name": "Sara Ahmadi",
+  "firstName": "Sara",
+  "lastName": "Ahmadi",
   "email": "sara@example.com",
   "phone": "+989121234567",
   "headline": "Strength coach",
   "bio": "Fifteen years coaching strength athletes.",
   "specialties": ["Strength"],
-  "experience_years": 12,
-  "certifications": [{ "title": "NSCA-CSCS", "issuer": "NSCA", "year": 2019 }],
-  "instagram_handle": "sara.coach",
+  "experienceYears": 12,
+  "certificates": [{ "category": "FEDERATION", "title": "NSCA-CSCS", "issuer": "NSCA", "fileId": "22222222-2222-4222-8222-222222222222" }],
+  "instagramHandle": "sara.coach",
   "locale": "fa"
 }
 ```
@@ -162,24 +163,24 @@ Success is `201` with the standard envelope:
   "success": true,
   "code": "SUCCESS",
   "message": "Operation successful",
-  "message_fa": "عملیات موفق بود",
+  "messageFa": "عملیات موفق بود",
   "data": {
-    "application_id": "…",
+    "applicationId": "…",
     "status": "PENDING",
-    "lookup_token": "…43 characters…",
-    "submitted_at": "2026-11-18T08:00:00Z"
+    "lookupToken": "…43 characters…",
+    "submittedAt": "2026-11-18T08:00:00Z"
   },
   "timestamp": "2026-11-18T08:00:00Z"
 }
 ```
 
-- `400 VALIDATION_FAILED` carries `data[]` of `{field, code, message, message_fa}`.
+- `400 VALIDATION_FAILED` carries `data[]` of `{field, code, message, messageFa}`.
 - `429 RATE_LIMITED` means the client should back off; show a retry message.
 - Show a neutral confirmation ("we received your application") for both new and
   duplicate submissions; do not imply that submitting created an account.
 - The status page calls `GET /api/v1/coaches/applications/{lookup_token}`, which returns
-  only `application_id`, `status`, `submitted_at` and `reviewed_at`.
-- Store `lookup_token` locally (for example `sessionStorage`) if the applicant should be
+  only `applicationId`, `status`, `submittedAt` and `reviewedAt`.
+- Store `lookupToken` locally (for example `sessionStorage`) if the applicant should be
   able to check status later in the same browser; there is no recovery by email yet.
 
 The admin screen is a normal ADMIN-authenticated page calling the four
@@ -266,14 +267,14 @@ Server is Spring SmartLifecycle-managed with graceful 15-second shutdown and for
 
 ### First administrator bootstrap
 
-No registration field, public admin creation route, or hardcoded account elevates privileges. Create a normal ATHLETE account through authorized Auth→User gRPC. An authorized database operator may perform a one-time controlled bootstrap, with application writes paused and the public UUID checked out of band:
+No registration field, public admin creation route, or hardcoded account elevates privileges. Create a normal ATHLETE account through authorized Auth→User gRPC. An authorized database operator may perform a one-time controlled bootstrap, with application writes paused and the account ID checked out of band:
 
 ```sql
 BEGIN;
-SELECT public_id, role, status FROM users WHERE public_id = :'verified_public_uuid' FOR UPDATE;
--- Operator verifies exactly the intended ACTIVE ATHLETE; bind the UUID in the SQL client.
+SELECT id, role, status FROM users WHERE id = :'verified_user_id' FOR UPDATE;
+-- Verify the intended ACTIVE ATHLETE and bind their numeric ID in the SQL client.
 UPDATE users SET role='ADMIN', updated_at=now(), version=version+1
- WHERE public_id=:'verified_public_uuid' AND role='ATHLETE' AND status='ACTIVE';
+ WHERE id=:'verified_user_id' AND role='ATHLETE' AND status='ACTIVE';
 -- Verify exactly one affected row and record approval/audit evidence before COMMIT.
 COMMIT;
 ```
@@ -282,7 +283,9 @@ This exceptional operational bootstrap bypasses the application outbox and must 
 
 ## Outbox and operational semantics
 
-Each domain change and outbox row commits in one PostgreSQL transaction. Changes lock the user aggregate; each emitted event gets a unique positive monotonically increasing aggregate_version (two distinct values for approval then role change). Envelope exactly matches `api-contracts/events.md`: event_id, event_type, event_version1, occurred_at, producer user-service, aggregate_id public UUID, aggregate_version, data. Kafka key is that same UUID.
+Each domain change and outbox row commits in one PostgreSQL transaction. Changes lock the user aggregate and each event receives a monotonically increasing `aggregate_version`. Account events now use version 2, a numeric JSON `aggregate_id`, and its decimal string as the Kafka key. Coach application events carry the application UUID as their aggregate ID and Kafka key. Approval and rejection events use version 2 with a numeric `reviewed_by`. Application submission stays at version 1.
+
+V11 converts existing application reviewers and unpublished event references before dropping `users.public_id`. It fails if a referenced legacy account lacks a numeric mapping. Published outbox entries retain their original payloads and keys. Coordinate the deployment with REST clients and Kafka consumers, and drain the previous relay and any in-flight deliveries before switching Kafka keys to preserve processing order across the cutover.
 
 Relays claim only each aggregate's oldest unpublished head with `FOR UPDATE SKIP LOCKED`, including backoff/lease exclusion; later events cannot bypass an older leased/retrying row. Claims expire after60s; tokens fence stale workers. During send, a DB row lock is retained until the producer reports final broker outcome; reclaim skips locked heads, even after lease expiry. Terminal acknowledgement is awaited before marking published. Failure increments attempts and delays5s without recording sensitive error text. acks=all, idempotence enabled, one in-flight request per producer connection. Crash after ACK/before DB mark may redeliver the same stable event_id: **at-least-once, not exactly-once**. Consumers must deduplicate IDs and enforce aggregate versions, including historical duplicates. Do not change partition counts without an ordering migration plan.
 
@@ -292,7 +295,7 @@ Metrics: `user_outbox_backlog`, `user_outbox_lag_seconds`, `user_outbox_retries_
 
 In Bruno, use **Open Collection** and select `api-collection/service/`. The **User** collection contains 13 REST requests plus health and private Prometheus. Bruno 4.3.0 successfully parsed all 15 requests, the collection settings, and the sample environment. The response examples are synthetic fixtures.
 
-For protected requests, copy `api-collection/service/.env.example` to an untracked `.env` in the collection directory and set `USER_BEARER_TOKEN`. Replace the sample UUIDs with real account IDs as needed. For Prometheus, use the private management endpoint on port 8082.
+For protected requests, copy `api-collection/service/.env.example` to an untracked `.env` in the collection directory and set `USER_BEARER_TOKEN`. Replace the sample numeric IDs with real account IDs as needed. For Prometheus, use the private management endpoint on port 8082.
 
 `GrpcEndpointTest` exercises all eight gRPC methods in process. To call them manually, point `grpcurl` at the sibling proto file.
 
@@ -306,14 +309,16 @@ Equivalent request fields: GetUserLoginInfoByEmail/CheckEmailExists `{email}`, G
 
 ## Remaining deployment dependencies
 
-Auth must adopt contract3.1.0 UUID subjects, mTLS client support for production, user status/session behavior and event handling. Gateway routes are not changed here. Docker-dependent database/Kafka behavior and actual PKI handshakes require infrastructure verification; do not interpret skipped integration tests or a built jar as deployment approval. No git commit/push/remote or other repository modification was made by this service implementation.
+Auth must use contract 3.1.0 numeric subjects, production mTLS, and user status/session handling. REST clients and the external OpenAPI contract need numeric account IDs and camelCase JSON properties. Kafka consumers must handle version 2 events with numeric account identifiers. Docker-dependent database/Kafka behavior and PKI handshakes require infrastructure verification.
 
 ## Coach plan management and payment processing
 
 | Route | Access |
 |---|---|
 | GET/POST /api/v1/coaches/me/plans | COACH; create requires an approved coach |
-| GET /api/v1/coaches/me/plan/form-options | COACH; returns active `include_options` |
+| GET /api/v1/coaches/me/plan/form-options | COACH, returns active `includeOptions`, `generalFields`, and `features` |
+| GET /api/v1/coaches/me/plan/form-options/features/{id} | COACH, returns the active feature and all its active field definitions in `fields` |
+| GET /api/v1/coaches/me/plan/form-options/fields/{id} | COACH, returns one active field definition |
 | PUT /api/v1/coaches/me/plans/{plan_id} | owner COACH only |
 | DELETE /api/v1/coaches/me/plans/{plan_id} | owner; archives (soft delete) |
 | POST /api/v1/coaches/me/plans/{plan_id}/activate | owner; reactivates an archived plan |
@@ -321,13 +326,23 @@ Auth must adopt contract3.1.0 UUID subjects, mTLS client support for production,
 Ownership always comes from the token: a plan mutation addressed at another
 coach's plan returns 403, and an unknown plan returns 404. Plan writes accept
 `includes` as a list of codes from `plan_include_catalog`. The initial catalog
-contains `WORKOUT`, `NUTRITION`, `SUPPLEMENT`, and `CHAT_SUPPORT`. Form options
-contain `id`, `code`, `label`, and `display_order`. Existing selections remain
-readable when a catalog option is deactivated. Reactivate archived plans before
-editing (`409 PLAN_ARCHIVED`).
+contains `WORKOUT`, `NUTRITION`, `SUPPLEMENT`, and `CHAT_SUPPORT`. Existing include
+selections remain readable when an option is deactivated. Reactivate archived
+plans before editing (`409 PLAN_ARCHIVED`).
 
-Plan endpoints use numeric identifiers. `plan_id` is the plan's ID and
-`coach_id` is the coach's numeric user ID.
+On create and update, `fieldValues` contains entries with `fieldId` and `value`.
+Supply all active `generalFields`, including `PLAN_LEVEL`, and use the field
+details route to load each field's validation rules. Send level selections as an
+array of option codes, for example `["BEGINNER", "INTERMEDIATE"]`. The optional
+`featureIds` list selects features. Their fields are optional and can only be
+submitted when their feature is selected.
+
+V10 moves existing level selections into `coach_plan_field_values` and removes
+`coach_plan_levels`. When editing a legacy plan, supply any required fields that
+have no saved value.
+
+Plan endpoints use numeric identifiers. `planId` is the plan's ID and
+`coachId` is the coach's numeric user ID.
 Authenticated requests still identify the caller through the JWT subject.
 
 Internally, `PlanPurchaseService` creates a `PENDING_PAYMENT` subscription and calls Order. The request
@@ -340,8 +355,8 @@ is unavailable, the pending subscription is rolled back.
 
 `V4` adds first/last name, a public profile-image file id, and child tables for
 certificates and work experience. Certificates are categorical: `UNIVERSITY`
-carries `field_of_study` and `degree`, `FEDERATION` and `SKILL` do not, and sending
+carries `fieldOfStudy` and `degree`, `FEDERATION` and `SKILL` do not, and sending
 academic fields for those categories is rejected rather than silently dropped.
-Each certificate references a private Storage asset (`file_id`) and requires one;
+Each certificate references a private Storage asset (`fileId`) and requires one;
 User stores no file bytes. The admin view exposes the references and the applicant
 data; the public status endpoint still exposes neither.

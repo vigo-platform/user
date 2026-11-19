@@ -1,0 +1,40 @@
+meta {
+  name: Get coach plan feature details
+  type: http
+  seq: 18
+}
+
+get {
+  url: {{base_url}}/api/v1/coaches/me/plan/form-options/features/{{plan_feature_id}}
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{process.env.USER_BEARER_TOKEN}}
+}
+
+vars:pre-request {
+  plan_feature_id: 14
+}
+
+tests {
+  test("Returns the feature and its field definitions", function () {
+    expect(res.getStatus()).to.equal(200);
+    const { success, data } = res.getBody();
+    expect(success).to.equal(true);
+    expect(data).to.include.all.keys("id", "code", "label", "category", "fields");
+    expect(data.fields).to.be.an("array");
+    for (const field of data.fields) {
+      expect(field).to.include.all.keys("id", "code", "label", "valueType", "required", "validationRules");
+      expect(field.required).to.equal(false);
+      expect(field.validationRules).to.be.an("object");
+    }
+  });
+}
+
+docs {
+  Set USER_BEARER_TOKEN to a COACH access token. In Vars, take plan_feature_id from data.features in Get coach plan form options.
+  
+  The response includes all active field definitions for the feature in data.fields. A feature without active fields returns an empty array. The seeded DIRECT_CONSULTATION feature has two fields.
+}

@@ -1,0 +1,58 @@
+meta {
+  name: Get coach plan form options
+  type: http
+  seq: 17
+}
+
+get {
+  url: {{base_url}}/api/v1/coaches/me/plan/form-options
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{process.env.USER_BEARER_TOKEN}}
+}
+
+tests {
+  test("Returns the option lists for the coach plan form", function () {
+    expect(res.getStatus()).to.equal(200);
+    const { success, data } = res.getBody();
+    expect(success).to.equal(true);
+    for (const key of ["includeOptions", "generalFields", "features"]) {
+      expect(data[key]).to.be.an("array");
+      for (const item of data[key]) {
+        expect(item).to.include.all.keys("id", "code", "label");
+      }
+    }
+    expect(data.generalFields.map((field) => field.code)).to.include("PLAN_LEVEL");
+    for (const field of data.generalFields) {
+      expect(field.required).to.equal(true);
+    }
+  });
+}
+
+docs {
+  Loads the options shown when a coach opens the create-plan form.
+  Set USER_BEARER_TOKEN to a COACH access token.
+  Submit every general field, including PLAN_LEVEL. Feature selection is optional.
+
+  Example response (HTTP 200, synthetic IDs):
+  ```json
+  {
+    "success": true,
+    "code": "SUCCESS",
+    "message": "Operation successful",
+    "messageFa": "عملیات موفق بود",
+    "data": {
+      "includeOptions": [{"id": 1, "code": "WORKOUT", "label": "برنامه تمرینی"}],
+      "generalFields": [
+        {"id": 2, "code": "PRIMARY_GOALS", "label": "اهداف اصلی", "required": true},
+        {"id": 12, "code": "PLAN_LEVEL", "label": "سطح برنامه", "required": true}
+      ],
+      "features": [{"id": 3, "code": "PROGRESS_TRACKING", "label": "پیگیری پیشرفت"}]
+    },
+    "timestamp": "2026-11-18T12:00:00Z"
+  }
+  ```
+}
