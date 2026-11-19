@@ -1,11 +1,11 @@
 meta {
-  name: Reject coach admin
+  name: Set user status admin
   type: http
-  seq: 13
+  seq: 2
 }
 
-post {
-  url: {{base_url}}/api/v1/admin/coaches/{{coach_id}}/reject
+patch {
+  url: {{base_url}}/api/v1/users/{{user_id}}/status
   body: json
   auth: bearer
 }
@@ -20,7 +20,8 @@ headers {
 
 body:json {
   {
-    "reason": "Please provide a verifiable certification"
+    "status": "SUSPENDED",
+    "reason": "Synthetic moderation example"
   }
 }
 
@@ -37,30 +38,17 @@ docs {
     "message": "Operation successful",
     "messageFa": "عملیات موفق بود",
     "data": {
-      "displayName": "Synthetic Coach",
-      "headline": "Strength coach",
-      "bio": "A synthetic coaching biography for API testing only.",
-      "specialties": [
-        "strength"
-      ],
-      "experienceYears": 3,
-      "certifications": [
-        {
-          "title": "Example certification",
-          "issuer": "Example institute",
-          "year": 2020
-        }
-      ],
-      "instagramHandle": null,
-      "resultImageUrls": [],
-      "coachId": 10,
+      "displayName": "Synthetic User",
       "avatarUrl": null,
-      "minPlanPrice": null,
-      "activeAthletesCount": 0,
+      "birthDate": "1995-01-01",
+      "gender": "OTHER",
+      "userId": 4,
+      "email": "synthetic@example.test",
+      "phone": null,
+      "role": "ATHLETE",
+      "status": "SUSPENDED",
       "createdAt": "2026-10-31T12:00:00Z",
-      "updatedAt": "2026-10-31T12:00:00Z",
-      "status": "REJECTED",
-      "rejectionReason": "Please provide a verifiable certification"
+      "updatedAt": "2026-10-31T12:00:00Z"
     },
     "timestamp": "2026-10-31T12:00:00Z"
   }

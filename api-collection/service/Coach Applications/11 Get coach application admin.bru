@@ -1,11 +1,11 @@
 meta {
-  name: List users admin
+  name: Get coach application admin
   type: http
   seq: 3
 }
 
 get {
-  url: {{base_url}}/api/v1/users?page=0&size=20
+  url: {{base_url}}/api/v1/admin/coaches/{{coach_id}}
   body: none
   auth: bearer
 }
@@ -27,11 +27,30 @@ docs {
     "message": "Operation successful",
     "messageFa": "عملیات موفق بود",
     "data": {
-      "page": 0,
-      "size": 20,
-      "totalElements": 0,
-      "totalPages": 0,
-      "content": []
+      "displayName": "Synthetic Coach",
+      "headline": "Strength coach",
+      "bio": "A synthetic coaching biography for API testing only.",
+      "specialties": [
+        "strength"
+      ],
+      "experienceYears": 3,
+      "certifications": [
+        {
+          "title": "Example certification",
+          "issuer": "Example institute",
+          "year": 2020
+        }
+      ],
+      "instagramHandle": null,
+      "resultImageUrls": [],
+      "coachId": 10,
+      "avatarUrl": null,
+      "minPlanPrice": null,
+      "activeAthletesCount": 0,
+      "createdAt": "2026-10-31T12:00:00Z",
+      "updatedAt": "2026-10-31T12:00:00Z",
+      "status": "PENDING",
+      "rejectionReason": null
     },
     "timestamp": "2026-10-31T12:00:00Z"
   }

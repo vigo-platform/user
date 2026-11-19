@@ -1,28 +1,17 @@
 meta {
-  name: Set user status admin
+  name: Approve coach admin
   type: http
-  seq: 5
+  seq: 4
 }
 
-patch {
-  url: {{base_url}}/api/v1/users/{{user_id}}/status
-  body: json
+post {
+  url: {{base_url}}/api/v1/admin/coaches/{{coach_id}}/approve
+  body: none
   auth: bearer
 }
 
 auth:bearer {
   token: {{process.env.USER_BEARER_TOKEN}}
-}
-
-headers {
-  Content-Type: application/json
-}
-
-body:json {
-  {
-    "status": "SUSPENDED",
-    "reason": "Synthetic moderation example"
-  }
 }
 
 tests {
@@ -38,17 +27,30 @@ docs {
     "message": "Operation successful",
     "messageFa": "عملیات موفق بود",
     "data": {
-      "displayName": "Synthetic User",
+      "displayName": "Synthetic Coach",
+      "headline": "Strength coach",
+      "bio": "A synthetic coaching biography for API testing only.",
+      "specialties": [
+        "strength"
+      ],
+      "experienceYears": 3,
+      "certifications": [
+        {
+          "title": "Example certification",
+          "issuer": "Example institute",
+          "year": 2020
+        }
+      ],
+      "instagramHandle": null,
+      "resultImageUrls": [],
+      "coachId": 10,
       "avatarUrl": null,
-      "birthDate": "1995-01-01",
-      "gender": "OTHER",
-      "userId": 4,
-      "email": "synthetic@example.test",
-      "phone": null,
-      "role": "ATHLETE",
-      "status": "SUSPENDED",
+      "minPlanPrice": null,
+      "activeAthletesCount": 0,
       "createdAt": "2026-10-31T12:00:00Z",
-      "updatedAt": "2026-10-31T12:00:00Z"
+      "updatedAt": "2026-10-31T12:00:00Z",
+      "status": "APPROVED",
+      "rejectionReason": null
     },
     "timestamp": "2026-10-31T12:00:00Z"
   }

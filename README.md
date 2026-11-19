@@ -295,7 +295,7 @@ Metrics: `user_outbox_backlog`, `user_outbox_lag_seconds`, `user_outbox_retries_
 
 ## Bruno / gRPC tooling
 
-In Bruno, use **Open Collection** and select `api-collection/service/`. The **User** collection contains 13 REST requests plus health and private Prometheus. Bruno 4.3.0 successfully parsed all 15 requests, the collection settings, and the sample environment. The response examples are synthetic fixtures.
+In Bruno, use **Open Collection** and select `api-collection/service/`. The **User** collection groups requests by workflow. **Public Coaches and Plans** contains the public coach list, coach profile, and plan details in browsing order. **Health and Metrics** contains the health and private Prometheus requests. The response examples are synthetic fixtures.
 
 For protected requests, copy `api-collection/service/.env.example` to an untracked `.env` in the collection directory and set `USER_BEARER_TOKEN`. Replace the sample numeric IDs with real account IDs as needed. For Prometheus, use the private management endpoint on port 8082.
 

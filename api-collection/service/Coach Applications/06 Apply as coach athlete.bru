@@ -1,12 +1,12 @@
 meta {
-  name: Get my coach profile
+  name: Apply as coach athlete
   type: http
-  seq: 7
+  seq: 1
 }
 
-get {
-  url: {{base_url}}/api/v1/coaches/me
-  body: none
+post {
+  url: {{base_url}}/api/v1/coaches/me/profile
+  body: json
   auth: bearer
 }
 
@@ -14,12 +14,37 @@ auth:bearer {
   token: {{process.env.USER_BEARER_TOKEN}}
 }
 
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "displayName": "Synthetic Coach",
+    "headline": "Strength coach",
+    "bio": "A synthetic coaching biography for API testing only.",
+    "specialties": [
+      "strength"
+    ],
+    "experienceYears": 3,
+    "certifications": [
+      {
+        "title": "Example certification",
+        "issuer": "Example institute",
+        "year": 2020
+      }
+    ],
+    "instagramHandle": null,
+    "resultImageUrls": []
+  }
+}
+
 tests {
-  test("Expected success status", function () { expect(res.getStatus()).to.equal(200); });
+  test("Expected success status", function () { expect(res.getStatus()).to.equal(201); });
 }
 
 docs {
-  Saved success response example (HTTP 200):
+  Saved success response example (HTTP 201):
   ```json
   {
     "success": true,
