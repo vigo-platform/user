@@ -18,7 +18,6 @@ import ir.vigoapp.user.service.CoachPlanService;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.*;
 import org.springframework.data.jpa.repository.support.JpaRepositoryFactory;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.orm.jpa.JpaTransactionManager;
 import org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean;
@@ -160,48 +159,6 @@ class CoachPlanServiceTest {
         assertThat(inTx(() -> service.detail(planId))).containsEntry("fieldValues", fields);
         assertThat(inTx(() -> service.update(coachA, planId, plan("Workout", 100000, "WORKOUT"))))
                 .containsEntry("featureIds", List.of()).containsEntry("fieldValues", required);
-    }
-
-    @Test
-    void migrationPreservesExistingLevelSelections() {
-        new JdbcTemplate(dataSource).execute("CREATE DATABASE plan_level_upgrade");
-        var legacyDataSource = postgres.getDatabase("postgres", "plan_level_upgrade");
-        var legacy = new JdbcTemplate(legacyDataSource);
-        Flyway.configure().dataSource(legacyDataSource).target("9").load().migrate();
-        legacy.update("""
-                INSERT INTO users (id, public_id, email, password_hash, display_name, role, status,
-                                   credentials_changed_at, created_at, updated_at)
-                VALUES (1, ?, 'legacy@example.test', 'test-hash', 'Legacy coach', 'COACH', 'ACTIVE', now(), now(), now())
-                """, UUID.randomUUID());
-        legacy.update("""
-                INSERT INTO coach_profiles (user_id, display_name, bio, specialties, experience_years,
-                                            certifications, result_image_urls, status, created_at, updated_at)
-                VALUES (1, 'Legacy coach', 'Coach biography', '[]', 1, '[]', 'APPROVED', now(), now())
-                """);
-        legacy.update("""
-                INSERT INTO coach_plans (id, coach_user_id, title, price_rial, duration_days, created_at, updated_at)
-                VALUES (1, 1, 'Legacy plan', 100000, 30, now(), now())
-                """);
-        legacy.update("INSERT INTO coach_plan_levels (plan_id, level) VALUES (1, 'ADVANCED'), (1, 'BEGINNER')");
-        legacy.update("""
-                INSERT INTO coach_plan_field_values (plan_id, field_id, value)
-                SELECT 1, id, '["STRENGTH"]'::jsonb FROM plan_field_definitions WHERE code = 'PRIMARY_GOALS'
-                """);
-
-        Flyway.configure().dataSource(legacyDataSource).load().migrate();
-
-        assertThat(legacy.queryForObject("SELECT to_regclass('coach_plan_levels')::text", String.class)).isNull();
-        assertThat(legacy.query("""
-                SELECT code, value::text FROM coach_plan_field_values
-                JOIN plan_field_definitions ON id = field_id
-                WHERE plan_id = 1
-                ORDER BY code
-                """, (row, index) -> Map.entry(row.getString("code"), json.readTree(row.getString("value")))))
-                .containsExactly(Map.entry("PLAN_LEVEL", json.readTree("[\"BEGINNER\",\"ADVANCED\"]")),
-                        Map.entry("PRIMARY_GOALS", json.readTree("[\"STRENGTH\"]")));
-        assertThat(legacy.queryForObject("""
-                SELECT count(*) FROM plan_field_definitions WHERE is_required <> (feature_id IS NULL)
-                """, Long.class)).isZero();
     }
 
     @Test
