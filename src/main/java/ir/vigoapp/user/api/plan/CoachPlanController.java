@@ -2,10 +2,15 @@ package ir.vigoapp.user.api.plan;
 
 import ir.vigoapp.user.dto.Envelope;
 import ir.vigoapp.user.dto.plan.CreatePlanFormOptions;
+import ir.vigoapp.user.dto.plan.PlanOptionDetails.Feature;
+import ir.vigoapp.user.dto.plan.PlanOptionDetails.Field;
 import ir.vigoapp.user.service.plan.CoachPlanService;
+import jakarta.validation.constraints.Positive;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -16,13 +21,22 @@ import org.springframework.web.bind.annotation.RestController;
 public class CoachPlanController {
     private final CoachPlanService coachPlans;
 
+    @PreAuthorize("hasRole('COACH')")
     @GetMapping("form-options")
     public Envelope<CreatePlanFormOptions> getFormOptions() {
         var options = coachPlans.getFormOptions();
-        log.atInfo()
-                .addKeyValue("event", "coach_plan_form_options_loaded")
-                .addKeyValue("result", "SUCCESS")
-                .log("Loaded coach plan form options");
         return Envelope.ok(options);
+    }
+
+    @PreAuthorize("hasRole('COACH')")
+    @GetMapping("form-options/features/{id}")
+    public Envelope<Feature> getFeatureDetails(@PathVariable @Positive long id) {
+        return Envelope.ok(coachPlans.getFeatureDetails(id));
+    }
+
+    @PreAuthorize("hasRole('COACH')")
+    @GetMapping("form-options/fields/{id}")
+    public Envelope<Field> getFieldDetails(@PathVariable @Positive long id) {
+        return Envelope.ok(coachPlans.getFieldDetails(id));
     }
 }

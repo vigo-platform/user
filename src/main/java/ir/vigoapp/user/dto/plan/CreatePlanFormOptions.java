@@ -7,11 +7,10 @@ import java.util.List;
 @Builder
 public record CreatePlanFormOptions(
         List<Item> includeOptions,
-        List<LevelOption> levels,
-        List<Item> generalFields,
+        List<GeneralField> generalFields,
         List<Item> features
 ) {
     public record Item(long id, String code, String label) {}
 
-    public record LevelOption(String code, String label) {}
+    public record GeneralField(long id, String code, String label, boolean required) {}
 }

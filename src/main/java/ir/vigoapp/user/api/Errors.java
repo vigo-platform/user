@@ -10,6 +10,7 @@ import org.springframework.web.servlet.resource.NoResourceFoundException;
 import org.springframework.web.servlet.HandlerMapping;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -41,6 +42,8 @@ public class Errors {
  }
  @ExceptionHandler(NoResourceFoundException.class) ResponseEntity<?> missing() { return ResponseEntity.status(404).body(Envelope.error("NOT_FOUND","Resource not found","منبع یافت نشد",null)); }
  @ExceptionHandler(org.springframework.web.HttpRequestMethodNotSupportedException.class) ResponseEntity<?> method() { return ResponseEntity.status(405).body(Envelope.error("METHOD_NOT_ALLOWED","Method not allowed","روش مجاز نیست",null)); }
+ // Delegate method-security denials to the configured security filter handler.
+ @ExceptionHandler(AccessDeniedException.class) void denied(AccessDeniedException e) { throw e; }
  @ExceptionHandler(Exception.class) ResponseEntity<?> unexpected(Exception e,HttpServletRequest request) {
   var event=log.atError().addKeyValue("event","user_request_failed").addKeyValue("result","FAILURE")
    .addKeyValue("status",500).addKeyValue("error_code","INTERNAL_SERVER_ERROR").addKeyValue("reason",e.getClass().getSimpleName())

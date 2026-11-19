@@ -8,21 +8,26 @@ import ir.vigoapp.user.api.ApiException;
 import ir.vigoapp.user.domain.*;
 import ir.vigoapp.user.domain.plan.subscription.SubscriptionStatus;
 import ir.vigoapp.user.dto.Requests;
+import ir.vigoapp.user.dto.plan.PlanFieldValue;
 import ir.vigoapp.user.repository.CoachPlanIncludeRepository;
 import ir.vigoapp.user.repository.CoachPlanRepository;
 import ir.vigoapp.user.repository.CoachRepository;
 import ir.vigoapp.user.repository.PlanSubscriptionRepository;
 import ir.vigoapp.user.repository.UserRepository;
+import ir.vigoapp.user.repository.plan.CoachPlanSelectionRepository;
+import ir.vigoapp.user.repository.plan.PlanCatalogRepository;
 import ir.vigoapp.user.service.CoachPlanService;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.*;
 import org.springframework.data.jpa.repository.support.JpaRepositoryFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.orm.jpa.JpaTransactionManager;
 import org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean;
 import org.springframework.orm.jpa.SharedEntityManagerCreator;
 import org.springframework.orm.jpa.vendor.HibernateJpaVendorAdapter;
 import org.springframework.transaction.support.TransactionTemplate;
+import tools.jackson.databind.json.JsonMapper;
 
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityManagerFactory;
@@ -42,6 +47,8 @@ class PlanPurchaseServiceTest {
     EntityManager em;
     TransactionTemplate tx;
     CoachPlanService planService;
+    PlanCatalogRepository catalog;
+    final JsonMapper json = JsonMapper.builder().build();
     PlanPurchaseService purchases;
     OrderClient orders;
 
@@ -73,9 +80,11 @@ class PlanPurchaseServiceTest {
         em = SharedEntityManagerCreator.createSharedEntityManager(emf);
         tx = new TransactionTemplate(new JpaTransactionManager(emf));
         var factory = new JpaRepositoryFactory(em);
+        var jdbc = JdbcClient.create(dataSource);
+        catalog = new PlanCatalogRepository(jdbc, json);
         planService = new CoachPlanService(factory.getRepository(CoachPlanRepository.class),
                 factory.getRepository(CoachPlanIncludeRepository.class),
-                factory.getRepository(CoachRepository.class));
+                factory.getRepository(CoachRepository.class), catalog, new CoachPlanSelectionRepository(jdbc, json));
         orders = mock(OrderClient.class);
         purchases = new PlanPurchaseService(planService, factory.getRepository(PlanSubscriptionRepository.class),
                 orders, new JdbcTemplate(dataSource), factory.getRepository(UserRepository.class));
@@ -107,9 +116,14 @@ class PlanPurchaseServiceTest {
     private <T> T inTx(java.util.function.Supplier<T> work) { return tx.execute(s -> work.get()); }
 
     private Long activePlan() {
+        var values = Map.of("PRIMARY_GOALS", "[\"STRENGTH\"]", "TRAINING_LOCATION", "[\"GYM\"]",
+                "WEEKLY_TRAINING_SESSIONS", "3", "PLAN_LEVEL", "[\"BEGINNER\"]");
+        var fields = catalog.findGeneralFields().stream()
+                .map(field -> new PlanFieldValue(field.id(), json.readTree(values.get(field.code()))))
+                .toList();
         Map<String, Object> created = inTx(() -> planService.create(coachId,
                 new Requests.Plan("Monthly", "Plan description", 500_000L, 30,
-                        List.of("WORKOUT", "NUTRITION"))));
+                        List.of("WORKOUT", "NUTRITION"), List.of(), fields)));
         return (Long) created.get("plan_id");
     }
 

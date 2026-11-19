@@ -8,6 +8,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
@@ -26,6 +27,7 @@ public class CoachPlanController {
 
     private static UUID id(Authentication a) { return UUID.fromString(a.getName()); }
 
+    @PreAuthorize("hasRole('COACH')")
     @GetMapping
     public Envelope<?> own(Authentication a) { return Envelope.ok(service.own(id(a))); }
 

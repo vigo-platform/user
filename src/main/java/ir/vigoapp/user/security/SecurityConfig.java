@@ -10,6 +10,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.env.Environment;
 import org.springframework.security.authorization.AuthorizationDecision;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
@@ -22,6 +23,7 @@ import tools.jackson.databind.ObjectMapper;
 import java.util.*;
 import static org.springframework.http.HttpMethod.*;
 @Configuration
+@EnableMethodSecurity
 public class SecurityConfig {
  private static final Logger log=LoggerFactory.getLogger(SecurityConfig.class);
  @Bean JwtDecoder jwtDecoder(@Value("${app.jwt.jwks-uri}") String jwks,@Value("${app.jwt.issuer}") String issuer,@Value("${app.jwt.audience}") String audience) {
@@ -69,7 +71,9 @@ public class SecurityConfig {
     .requestMatchers(GET,"/api/v1/admin/coaches/applications","/api/v1/admin/coaches/applications/{application_id}").hasRole("ADMIN")
     .requestMatchers(POST,"/api/v1/admin/coaches/applications/{application_id}/approve","/api/v1/admin/coaches/applications/{application_id}/reject").hasRole("ADMIN")
     // Coaches manage their own plans.
-    .requestMatchers(GET,"/api/v1/coaches/me/plans","/api/v1/coaches/me/plan/form-options").hasRole("COACH")
+    .requestMatchers(GET,"/api/v1/coaches/me/plans","/api/v1/coaches/me/plan/form-options",
+     "/api/v1/coaches/me/plan/form-options/features/{id}",
+     "/api/v1/coaches/me/plan/form-options/fields/{id}").authenticated()
     .requestMatchers(POST,"/api/v1/coaches/me/plans").hasRole("COACH")
     .requestMatchers(PUT,"/api/v1/coaches/me/plans/{plan_id}").hasRole("COACH")
     .requestMatchers(DELETE,"/api/v1/coaches/me/plans/{plan_id}").hasRole("COACH")
