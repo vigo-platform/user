@@ -14,6 +14,22 @@ auth:bearer {
   token: {{process.env.USER_BEARER_TOKEN}}
 }
 
+script:post-response {
+  if (res.getStatus() === 200 && res.getBody().success) {
+    const variablesByCode = {
+      PRIMARY_GOALS: "plan_primary_goals_field_id",
+      TRAINING_LOCATION: "plan_training_location_field_id",
+      WEEKLY_TRAINING_SESSIONS: "plan_weekly_training_sessions_field_id",
+      PLAN_LEVEL: "plan_level_field_id"
+    };
+    for (const field of res.getBody().data.generalFields) {
+      if (Object.hasOwn(variablesByCode, field.code)) {
+        bru.setVar(variablesByCode[field.code], String(field.id));
+      }
+    }
+  }
+}
+
 tests {
   test("Returns the option lists for the coach plan form", function () {
     expect(res.getStatus()).to.equal(200);
@@ -45,6 +61,7 @@ docs {
   General fields include help text and validation rules.
   Use Get coach plan feature details to load a feature's fields.
   Submit every general field, including PLAN_LEVEL. Feature selection is optional.
+  A successful response saves the field IDs for the Create and Update coach plan examples.
 
   Example response (HTTP 200, synthetic IDs):
   ```json

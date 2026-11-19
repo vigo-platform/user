@@ -359,16 +359,26 @@ contains `WORKOUT`, `NUTRITION`, `SUPPLEMENT`, and `CHAT_SUPPORT`. Existing incl
 selections remain readable when an option is deactivated. Unarchive archived
 plans before editing (`409 PLAN_ARCHIVED`).
 
-New plans start with `isActive: false` and `isArchived: false`. The plan
-response exposes both flags and a derived `status`. The admin controls activation
-and the owning coach controls archiving. Plans are public and available for
-purchase only while active and unarchived. V12 keeps previously public plans
-active and preserves the owner's ability to restore legacy archived plans.
+The coach completes the form locally and submits one `POST /api/v1/coaches/me/plans`.
+A successful transaction returns HTTP 201 with `data.planId`, `status` equal to
+`ACTIVE`, `isActive` equal to true and `isArchived` equal to false.
+An administrator can subsequently deactivate the plan. A coach can archive it.
 
-Plan amounts use `currency`, an uppercase three-letter code that defaults to
-`IRR` on create. The current currency is used when an update omits it. The
-plan response includes `price` and nullable `compareAtPrice`. Changing a plan's
-currency clears any previous comparison price.
+| Request property | Rule |
+|---|---|
+| `title` | Required text, 3–80 characters after trimming |
+| `price`, `durationDays` | Required JSON integers. New plans are priced in Iranian rials with a minimum of 10,000. Duration is 1–365 days. |
+| `includes` | One or more distinct active service codes |
+| `featureIds` | Optional array of distinct active feature IDs |
+| `fieldValues` | One answer per field ID, covering all active required general fields |
+| `summary`, `description` | Optional text up to 180 and 1,500 characters respectively |
+| `firstDeliveryDays` | Optional nonnegative integer. Zero represents same-day delivery. |
+| `compareAtPrice` | Optional integer in the plan's currency, strictly greater than `price` |
+
+The server assigns the currency and the initial status. Sending `currency`,
+`coachId` or `isActive` in the body produces an `UNKNOWN_FIELD` issue. Older plans
+retain their stored currency on edit. On PUT, omitting `summary`, `firstDeliveryDays`
+or `compareAtPrice` preserves its stored value. Send an explicit JSON null to clear it.
 
 On create and update, `fieldValues` contains entries with `fieldId` and `value`.
 Supply all active `generalFields`, including `PLAN_LEVEL`. The form-options
@@ -377,6 +387,40 @@ and `validationRules` for each field in `generalFields`. Send level selections
 as an array of option codes, for example `["BEGINNER", "INTERMEDIATE"]`.
 The optional `featureIds` list selects features. Load their optional fields
 from `form-options/features/{id}` and submit them only for selected features.
+
+An `INTEGER` answer must be a JSON integer within the catalog's bounds. A
+`SINGLE_SELECT` answer is an option code. A `MULTI_SELECT` answer is a nonempty
+array of distinct option codes. A `TEXT` answer is a nonblank string, trimmed
+and checked against the field's `minLength` and `maxLength` in Unicode code
+points. Omit the entry for an unanswered optional field.
+
+Invalid submissions return HTTP 400 with `code` equal to `VALIDATION_FAILED`.
+`data` contains the errors from the submission. Each issue carries a property
+path and an English code. Catalog issues also identify the submitted feature
+or field when known. A missing required answer uses the path `fieldValues`
+and the missing catalog field ID. The front end can map these codes to localized messages.
+
+| Issue codes | Meaning |
+|---|---|
+| `INVALID_REQUEST_BODY`, `UNKNOWN_FIELD` | Unreadable body or unexpected property |
+| `REQUIRED_FIELD_MISSING`, `INVALID_VALUE_TYPE`, `EMPTY_SELECTION` | Missing answer, wrong JSON type or empty required selection |
+| `INVALID_ID`, `INVALID_CODE` | Invalid ID or service code format |
+| `UNKNOWN_ID`, `UNKNOWN_CODE`, `INACTIVE_ITEM` | Catalog item missing or inactive |
+| `DUPLICATE_ID`, `DUPLICATE_CODE` | Repeated field, feature or service |
+| `FEATURE_NOT_SELECTED` | Answer belongs to a feature the coach did not select |
+| `OPTION_NOT_ALLOWED`, `DUPLICATE_OPTION` | Invalid or repeated option within an answer |
+| `INTEGER_TOO_SMALL`, `INTEGER_TOO_LARGE` | Integer outside `params.min` or `params.max` |
+| `TEXT_TOO_SHORT`, `TEXT_TOO_LONG`, `INVALID_TEXT` | Text outside the length bounds or containing a null character |
+| `COMPARE_AT_PRICE_NOT_GREATER_THAN_PRICE` | Comparison price must exceed the selling price |
+
+Example entries in `data` using illustrative field IDs
+
+```json
+[
+  {"field":"fieldValues[0].value","fieldId":4,"code":"INTEGER_TOO_LARGE","params":{"max":7}},
+  {"field":"fieldValues","fieldId":5,"code":"REQUIRED_FIELD_MISSING"}
+]
+```
 
 V10 moves existing level selections into `coach_plan_field_values` and removes
 `coach_plan_levels`. When editing a legacy plan, supply any required fields that

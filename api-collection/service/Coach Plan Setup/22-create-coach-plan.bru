@@ -1,0 +1,61 @@
+meta {
+  name: Create coach plan
+  type: http
+  seq: 5
+}
+
+post {
+  url: {{base_url}}/api/v1/coaches/me/plans
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{process.env.USER_BEARER_TOKEN}}
+}
+
+body:json {
+  {
+    "title": "برنامه تمرین قدرتی",
+    "summary": "سه جلسه تمرین قدرتی در هفته",
+    "description": "برنامه ۳۰ روزه برای تمرین در باشگاه.",
+    "price": 120000,
+    "compareAtPrice": 150000,
+    "durationDays": 30,
+    "firstDeliveryDays": 1,
+    "includes": ["WORKOUT"],
+    "featureIds": [],
+    "fieldValues": [
+      { "fieldId": {{plan_primary_goals_field_id}}, "value": ["STRENGTH"] },
+      { "fieldId": {{plan_training_location_field_id}}, "value": ["GYM"] },
+      { "fieldId": {{plan_weekly_training_sessions_field_id}}, "value": 3 },
+      { "fieldId": {{plan_level_field_id}}, "value": ["BEGINNER"] }
+    ]
+  }
+}
+
+script:post-response {
+  if (res.getStatus() === 201 && res.getBody().success) {
+    bru.setVar("created_coach_plan_id", String(res.getBody().data.planId));
+  }
+}
+
+tests {
+  test("Creates an active plan priced in rials", function () {
+    expect(res.getStatus()).to.equal(201);
+    const { success, data } = res.getBody();
+    expect(success).to.equal(true);
+    expect(data.planId).to.be.a("number").and.to.be.greaterThan(0);
+    expect(data.currency).to.equal("IRR");
+    expect(data.status).to.equal("ACTIVE");
+    expect(data.isActive).to.equal(true);
+    expect(data.isArchived).to.equal(false);
+  });
+}
+
+docs {
+  Set USER_BEARER_TOKEN to an approved COACH access token.
+  Run Get coach plan form options first to populate the field IDs from the selected environment.
+  This body answers all four seeded general fields and selects WORKOUT with no optional features.
+  The response saves the new plan ID for Update coach plan.
+}

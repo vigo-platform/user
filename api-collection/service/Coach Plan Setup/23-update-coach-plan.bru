@@ -1,0 +1,51 @@
+meta {
+  name: Update coach plan
+  type: http
+  seq: 6
+}
+
+put {
+  url: {{base_url}}/api/v1/coaches/me/plans/{{created_coach_plan_id}}
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{process.env.USER_BEARER_TOKEN}}
+}
+
+body:json {
+  {
+    "title": "برنامه تمرین قدرتی پیشرفته",
+    "summary": "چهار جلسه تمرین قدرتی در هفته",
+    "description": "نسخه به‌روزشده برنامه ۳۰ روزه برای تمرین در باشگاه.",
+    "price": 130000,
+    "compareAtPrice": 160000,
+    "durationDays": 30,
+    "firstDeliveryDays": 1,
+    "includes": ["WORKOUT"],
+    "featureIds": [],
+    "fieldValues": [
+      { "fieldId": {{plan_primary_goals_field_id}}, "value": ["STRENGTH"] },
+      { "fieldId": {{plan_training_location_field_id}}, "value": ["GYM"] },
+      { "fieldId": {{plan_weekly_training_sessions_field_id}}, "value": 4 },
+      { "fieldId": {{plan_level_field_id}}, "value": ["ADVANCED"] }
+    ]
+  }
+}
+
+tests {
+  test("Updates the plan created by this collection", function () {
+    expect(res.getStatus()).to.equal(200);
+    const { success, data } = res.getBody();
+    expect(success).to.equal(true);
+    expect(String(data.planId)).to.equal(bru.getVar("created_coach_plan_id"));
+    expect(data.price).to.equal(130000);
+    expect(data.compareAtPrice).to.equal(160000);
+  });
+}
+
+docs {
+  Run Get coach plan form options and then Create coach plan in the same environment with the same coach token.
+  This request uses the ID returned by Create coach plan. It submits the full set of required fields.
+}
