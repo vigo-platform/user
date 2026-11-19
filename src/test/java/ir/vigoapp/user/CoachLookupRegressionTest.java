@@ -186,9 +186,9 @@ class CoachLookupRegressionTest {
    """);
   seedField(jdbc,first,"UNSET","INTEGER","{}");
   new TransactionTemplate(manager).executeWithoutResult(tx->{
-   selections.replace(featured,List.of(last,tieB,tieA,first),List.of(
+   selections.insert(featured,List.of(),List.of(last,tieB,tieA,first),List.of(
     new PlanFieldValue(count,json.readTree("3")),new PlanFieldValue(level,json.readTree("[\"BEGINNER\"]"))));
-   selections.replace(foreign,List.of(last,tieB),List.of());
+   selections.insert(foreign,List.of(),List.of(last,tieB),List.of());
   });
   long workout=jdbc.queryForObject("""
    INSERT INTO plan_include_catalog (code,label,is_active,display_order,created_at,updated_at)
@@ -284,7 +284,7 @@ class CoachLookupRegressionTest {
   long count = seedField(jdbc, first, "OWN_SESSION_COUNT", "INTEGER", "{}");
   long level = seedField(jdbc, null, "OWN_PLAN_LEVEL", "MULTI_SELECT",
    "{\"options\":[{\"code\":\"BEGINNER\",\"label\":\"Beginner\"}]}");
-  new TransactionTemplate(manager).executeWithoutResult(tx -> selections.replace(archived,
+  new TransactionTemplate(manager).executeWithoutResult(tx -> selections.insert(archived,List.of(),
    List.of(fourth, second, first, third), List.of(new PlanFieldValue(count, json.readTree("3")),
     new PlanFieldValue(level, json.readTree("[\"BEGINNER\"]")))));
   long include = jdbc.queryForObject("""

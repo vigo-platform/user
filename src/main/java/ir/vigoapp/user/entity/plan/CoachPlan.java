@@ -25,6 +25,8 @@ import java.time.Instant;
 @Entity
 @Table(name = "coach_plans")
 public class CoachPlan {
+    public static final String DEFAULT_CURRENCY = "IRR";
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -55,7 +57,7 @@ public class CoachPlan {
     private Long compareAtPrice;
 
     @Column(name = "currency", nullable = false, length = 3)
-    private String currency = "IRR";
+    private String currency = DEFAULT_CURRENCY;
 
     @Column(name = "duration_days", nullable = false)
     private int durationDays;
@@ -64,7 +66,7 @@ public class CoachPlan {
     private Integer firstDeliveryDays;
 
     @Column(name = "is_active", nullable = false)
-    private boolean active;
+    private boolean active = true;
 
     @Column(name = "is_archived", nullable = false)
     private boolean archived;

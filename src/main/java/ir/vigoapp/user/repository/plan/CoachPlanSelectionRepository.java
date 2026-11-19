@@ -7,6 +7,7 @@ import ir.vigoapp.user.dto.plan.PublicCoachPlan.Option;
 import ir.vigoapp.user.entity.plan.catalog.PlanFieldDefinition.ValueType;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.jdbc.support.SqlArrayValue;
 import org.springframework.stereotype.Repository;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
@@ -85,15 +86,15 @@ public class CoachPlanSelectionRepository {
                 ORDER BY field.display_order, field.id
                 """).param("planId", planId).query((row, index) -> {
             var value = json.readTree(row.getString("value"));
+            var type = ValueType.valueOf(row.getString("value_type"));
             var field = new Field(row.getLong("id"), row.getString("code"), row.getString("label"),
-                    row.getString("help_text"), ValueType.valueOf(row.getString("value_type")), value,
-                    readSelectedOptions(value, row.getString("options")));
+                    row.getString("help_text"), type, value, readSelectedOptions(type, value, row.getString("options")));
             return new SelectedField(row.getObject("feature_id", Long.class), field);
         }).list();
     }
 
-    private List<Option> readSelectedOptions(JsonNode value, String optionsJson) {
-        if (!value.isString() && !value.isArray()) return List.of();
+    private List<Option> readSelectedOptions(ValueType type, JsonNode value, String optionsJson) {
+        if (type != ValueType.SINGLE_SELECT && type != ValueType.MULTI_SELECT) return List.of();
 
         Map<String, String> labels = new HashMap<>();
         if (optionsJson != null) {
@@ -114,21 +115,27 @@ public class CoachPlanSelectionRepository {
         return options;
     }
 
-    public void replace(long planId, List<Long> featureIds, List<PlanFieldValue> fieldValues) {
+    public void clear(long planId) {
+        jdbc.sql("DELETE FROM coach_plan_includes WHERE plan_id = :planId").param("planId", planId).update();
         jdbc.sql("DELETE FROM coach_plan_field_values WHERE plan_id = :planId").param("planId", planId).update();
         jdbc.sql("DELETE FROM coach_plan_features WHERE plan_id = :planId").param("planId", planId).update();
+    }
 
-        for (long featureId : featureIds) {
-            jdbc.sql("INSERT INTO coach_plan_features (plan_id, feature_id) VALUES (:planId, :featureId)")
-                    .param("planId", planId).param("featureId", featureId).update();
+    public void insert(long planId, List<Long> includeIds, List<Long> featureIds, List<PlanFieldValue> fieldValues) {
+        if (!includeIds.isEmpty()) {
+            jdbc.sql("INSERT INTO coach_plan_includes (plan_id, include_id) SELECT :planId, unnest(:ids)")
+                    .param("planId", planId).param("ids", new SqlArrayValue("bigint", includeIds.toArray())).update();
         }
-        for (var field : fieldValues) {
+        if (!featureIds.isEmpty()) {
+            jdbc.sql("INSERT INTO coach_plan_features (plan_id, feature_id) SELECT :planId, unnest(:ids)")
+                    .param("planId", planId).param("ids", new SqlArrayValue("bigint", featureIds.toArray())).update();
+        }
+        if (!fieldValues.isEmpty()) {
             jdbc.sql("""
                     INSERT INTO coach_plan_field_values (plan_id, field_id, value)
-                    VALUES (:planId, :fieldId, CAST(:value AS jsonb))
-                    """)
-                    .param("planId", planId).param("fieldId", field.fieldId())
-                    .param("value", json.writeValueAsString(field.value())).update();
+                    SELECT :planId, answer."fieldId", answer.value
+                    FROM jsonb_to_recordset(CAST(:answers AS jsonb)) AS answer("fieldId" bigint, value jsonb)
+                    """).param("planId", planId).param("answers", json.writeValueAsString(fieldValues)).update();
         }
     }
 }

@@ -36,7 +36,7 @@ public class CoachPlanFieldValue {
             foreignKey = @ForeignKey(name = "coach_plan_field_values_field_fkey"))
     private PlanFieldDefinition field;
 
-    // An integer, an option code, or a list of option codes.
+    // The catalog defines the JSON type and validation rules for this value.
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(nullable = false, columnDefinition = "jsonb")
     private Object value;

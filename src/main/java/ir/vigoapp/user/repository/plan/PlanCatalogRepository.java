@@ -6,12 +6,14 @@ import ir.vigoapp.user.dto.plan.PlanOptionDetails.Field;
 import ir.vigoapp.user.entity.plan.catalog.PlanFieldDefinition.ValueType;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.jdbc.support.SqlArrayValue;
 import org.springframework.stereotype.Repository;
 import tools.jackson.databind.ObjectMapper;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -48,18 +50,39 @@ public class PlanCatalogRepository {
                 """).query((row, index) -> readField(row)).list();
     }
 
-    public record FieldDefinition(Field field, Long featureId) {}
+    public record IncludeStatus(long id, String code, boolean active) {}
 
-    public List<FieldDefinition> findActiveFieldDefinitions() {
+    public List<IncludeStatus> findIncludeStatuses(Collection<String> codes) {
+        if (codes.isEmpty()) return List.of();
+        return jdbc.sql("""
+                SELECT id, code, is_active AS active FROM plan_include_catalog
+                WHERE code = ANY(:codes) ORDER BY display_order, id
+                """).param("codes", new SqlArrayValue("varchar", codes.toArray())).query(IncludeStatus.class).list();
+    }
+
+    public record FeatureStatus(long id, boolean active) {}
+
+    public List<FeatureStatus> findFeatureStatuses(Collection<Long> ids) {
+        if (ids.isEmpty()) return List.of();
+        return jdbc.sql("SELECT id, is_active AS active FROM plan_feature_catalog WHERE id = ANY(:ids)")
+                .param("ids", new SqlArrayValue("bigint", ids.toArray())).query(FeatureStatus.class).list();
+    }
+
+    public record FieldDefinition(Field field, Long featureId, boolean active) {}
+
+    public List<FieldDefinition> findSubmissionFields(Collection<Long> ids) {
         return jdbc.sql("""
                 SELECT field.id, field.feature_id, field.code, field.label, field.help_text,
-                       field.value_type, field.is_required, field.validation_rules
+                       field.value_type, field.is_required, field.validation_rules,
+                       (field.is_active AND (field.feature_id IS NULL OR feature.is_active)) AS active
                 FROM plan_field_definitions field
                 LEFT JOIN plan_feature_catalog feature ON feature.id = field.feature_id
-                WHERE field.is_active AND (field.feature_id IS NULL OR feature.is_active)
+                WHERE (field.feature_id IS NULL AND field.is_active AND field.is_required)
+                   OR field.id = ANY(:ids)
                 ORDER BY field.display_order, field.id
-                """)
-                .query((row, index) -> new FieldDefinition(readField(row), row.getObject("feature_id", Long.class)))
+                """).param("ids", new SqlArrayValue("bigint", ids.toArray()))
+                .query((row, index) -> new FieldDefinition(readField(row), row.getObject("feature_id", Long.class),
+                        row.getBoolean("active")))
                 .list();
     }
 

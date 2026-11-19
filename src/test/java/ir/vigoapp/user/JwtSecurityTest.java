@@ -4,7 +4,7 @@ import ir.vigoapp.user.api.plan.PublicCoachPlanController;
 import ir.vigoapp.user.domain.*;
 import ir.vigoapp.user.dto.Requests;
 import ir.vigoapp.user.dto.Views;
-import ir.vigoapp.user.dto.plan.PlanFieldValue;
+import ir.vigoapp.user.api.plan.CoachPlanManagementController;
 import ir.vigoapp.user.entity.UserAccount;
 import ir.vigoapp.user.repository.UserRepository;
 import ir.vigoapp.user.security.SecurityConfig;
@@ -32,13 +32,13 @@ import tools.jackson.databind.json.JsonMapper;
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
-@WebMvcTest(controllers={UserController.class, CoachPlanController.class, AdminCoachPlanController.class, ir.vigoapp.user.api.plan.CoachPlanController.class, PublicCoachPlanController.class},properties={"app.jwt.jwks-uri=https://auth.example.test/jwks","app.jwt.issuer=https://auth.example.test","app.jwt.audience=vigo-api"})
+@WebMvcTest(controllers={UserController.class, CoachPlanManagementController.class, AdminCoachPlanController.class, ir.vigoapp.user.api.plan.CoachPlanController.class, PublicCoachPlanController.class},properties={"app.jwt.jwks-uri=https://auth.example.test/jwks","app.jwt.issuer=https://auth.example.test","app.jwt.audience=vigo-api"})
 @Import({SecurityConfig.class,JwtSecurityTest.Keys.class})
 class JwtSecurityTest {
  static final String ISSUER="https://auth.example.test";static final long ID=1L;
  static final KeyPair KEY=key(),OTHER=key();
  @Autowired MockMvc mvc;@MockitoBean ProfileService profiles;@MockitoBean UserRepository users;
- @MockitoBean ir.vigoapp.user.service.CoachPlanService plans;
+ @MockitoBean ir.vigoapp.user.service.plan.CoachPlanManagementService plans;
  @MockitoBean ir.vigoapp.user.service.plan.CoachPlanService formOptions;
  @MockitoBean OwnedCoachPlanService ownedPlans;
  @MockitoBean PublicCoachPlanService publicPlans;
@@ -78,8 +78,7 @@ class JwtSecurityTest {
    {"title":"Workout plan","price":100000,"durationDays":30,"includes":["WORKOUT"],
     "fieldValues":[{"fieldId":12,"value":["BEGINNER"]}]}
    """;
-  var level = new PlanFieldValue(12, JsonMapper.builder().build().readTree("[\"BEGINNER\"]"));
-  var request = new Requests.Plan("Workout plan", null, 100000L, 30, List.of("WORKOUT"), List.of(), List.of(level), null);
+  var request = JsonMapper.builder().build().readTree(body);
 
   mvc.perform(post("/api/v1/coaches/me/plans").header("Authorization", "Bearer " + coachToken)
     .contentType("application/json").content(body)).andExpect(status().isCreated());

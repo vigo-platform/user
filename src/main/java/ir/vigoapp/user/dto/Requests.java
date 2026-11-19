@@ -1,6 +1,5 @@
 package ir.vigoapp.user.dto;
 import ir.vigoapp.user.domain.*;
-import ir.vigoapp.user.dto.plan.PlanFieldValue;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
 import java.time.LocalDate;
@@ -48,20 +47,6 @@ public final class Requests {
   @Size(max=1000) String description,
   @Min(0) @Max(720) Integer durationMonths) {}
  public enum CertificateCategory { UNIVERSITY, FEDERATION, SKILL }
- /** Plan payload. Ownership comes from the token, never from this body. */
- public record Plan(@NotBlank @Size(min=3,max=80) String title,
-  @Size(max=1500) String description,
-  @NotNull @PositiveOrZero Long price,
-  @NotNull @Min(1) @Max(365) Integer durationDays,
-  @NotEmpty List<@NotBlank @Size(max=64) String> includes,
-  List<@NotNull @Positive Long> featureIds,
-  List<@NotNull @Valid PlanFieldValue> fieldValues,
-  @Pattern(regexp="[A-Z]{3}") String currency) {
-  public Plan {
-   if (featureIds == null) featureIds = List.of();
-   if (fieldValues == null) fieldValues = List.of();
-  }
- }
  public record PlanActivation(@NotNull Boolean isActive) {}
  public record Status(@NotNull AccountStatus status,@Size(max=500) String reason) {}
  public record Rejection(@NotBlank @Size(min=5,max=500) String reason) {}
