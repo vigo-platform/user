@@ -1,0 +1,33 @@
+meta {
+  name: Get public coach plan
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{base_url}}/api/v1/coaches/{{coach_id}}/plan/{{plan_id}}
+  body: none
+  auth: none
+}
+
+vars:pre-request {
+  plan_id: 1
+}
+
+tests {
+  test("Returns the public plan and its selected services, features and fields", function () {
+    expect(res.getStatus()).to.equal(200);
+    const { success, data } = res.getBody();
+    expect(success).to.equal(true);
+    expect(data).to.include.all.keys("id", "coach_id", "description", "includes", "features", "general_fields");
+    expect(data).to.not.have.any.keys("version", "created_at", "updated_at", "is_active", "is_archived");
+    for (const key of ["includes", "features", "general_fields"]) expect(data[key]).to.be.an("array");
+    for (const feature of data.features) expect(feature.fields).to.be.an("array");
+  });
+}
+
+docs {
+  Take plan_id from data.plans in Get public coach. The plan must be active, unarchived, and owned by coach_id.
+  The response includes full selected features, their saved field values, plan-level fields and included services.
+  An unavailable plan returns HTTP 404 with code NOT_FOUND.
+}

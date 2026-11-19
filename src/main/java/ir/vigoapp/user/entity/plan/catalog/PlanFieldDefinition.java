@@ -27,7 +27,7 @@ import org.hibernate.type.SqlTypes;
 @Entity
 @Table(name = "plan_field_definitions")
 public class PlanFieldDefinition {
-    public enum ValueType { INTEGER, SINGLE_SELECT, MULTI_SELECT }
+    public enum ValueType { INTEGER, SINGLE_SELECT, MULTI_SELECT, TEXT }
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

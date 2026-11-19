@@ -116,7 +116,7 @@ class CoachApplicationWorkflowTest {
     void submissionCreatesNoAccountAndNoInvitation() {
         Map<String, Object> result = inTx(() -> service.submit(application("new@example.com")));
         assertThat(result.get("status")).isEqualTo(CoachApplicationStatus.PENDING);
-        assertThat(result.get("lookup_token")).isNotNull();
+        assertThat(result.get("lookupToken")).isNotNull();
         assertThat(accounts()).isZero();
         assertThat(new JdbcTemplate(dataSource).queryForObject("select count(*) from coach_invitations", Long.class)).isZero();
         assertThat(outboxRows()).isEqualTo(1);
@@ -132,14 +132,14 @@ class CoachApplicationWorkflowTest {
                 "Fifteen years coaching strength athletes.", List.of("Strength"), 10, null,
                 List.of(university, federated), List.of(), null, "fa");
         var result = inTx(() -> service.submit(request));
-        Map<String, Object> detail = service.get((UUID) result.get("application_id"));
+        Map<String, Object> detail = service.get((UUID) result.get("applicationId"));
         @SuppressWarnings("unchecked")
         var rows = (java.util.List<Map<String, Object>>) detail.get("certificates");
         assertThat(rows).hasSize(2);
         assertThat(rows.get(0)).containsEntry("category", ir.vigoapp.user.entity.CoachCertificate.Category.UNIVERSITY)
-                .containsEntry("degree", "BSc").containsEntry("field_of_study", "Physical education");
+                .containsEntry("degree", "BSc").containsEntry("fieldOfStudy", "Physical education");
         assertThat(rows.get(1)).containsEntry("category", ir.vigoapp.user.entity.CoachCertificate.Category.FEDERATION)
-                .containsEntry("degree", null).containsEntry("field_of_study", null);
+                .containsEntry("degree", null).containsEntry("fieldOfStudy", null);
     }
 
     @Test
@@ -168,8 +168,8 @@ class CoachApplicationWorkflowTest {
     void duplicateSubmissionReusesPendingAndIssuesAnotherLookupToken() {
         var first = inTx(() -> service.submit(application("dupe@example.com")));
         var second = inTx(() -> service.submit(application("DUPE@example.com")));
-        assertThat(second.get("application_id")).isEqualTo(first.get("application_id"));
-        assertThat((String) second.get("lookup_token")).isNotEqualTo(first.get("lookup_token"));
+        assertThat(second.get("applicationId")).isEqualTo(first.get("applicationId"));
+        assertThat((String) second.get("lookupToken")).isNotEqualTo(first.get("lookupToken"));
         assertThat(new JdbcTemplate(dataSource).queryForObject("select count(*) from coach_applications", Long.class)).isEqualTo(1);
         assertThat(outboxRows()).isEqualTo(1);
     }
@@ -185,9 +185,9 @@ class CoachApplicationWorkflowTest {
     @Test
     void statusLookupReturnsSummaryAndRejectsUnknownToken() {
         var submitted = inTx(() -> service.submit(application("status@example.com")));
-        var status = service.status((String) submitted.get("lookup_token"));
+        var status = service.status((String) submitted.get("lookupToken"));
         assertThat(status.get("status")).isEqualTo(CoachApplicationStatus.PENDING);
-        assertThat(status).doesNotContainKeys("email", "full_name", "first_name", "phone", "certificates", "experiences");
+        assertThat(status).doesNotContainKeys("email", "fullName", "firstName", "phone", "certificates", "experiences");
         assertThatThrownBy(() -> service.status("not-a-real-token")).isInstanceOfSatisfying(ApiException.class,
                 e -> assertThat(e.status).isEqualTo(404));
     }
@@ -195,9 +195,9 @@ class CoachApplicationWorkflowTest {
     @Test
     void approvalIssuesInvitationWithoutCreatingAccount() {
         var submitted = inTx(() -> service.submit(application("approve@example.com")));
-        var approved = inTx(() -> service.approve(java.util.UUID.randomUUID(), (java.util.UUID) submitted.get("application_id")));
+        var approved = inTx(() -> service.approve(1L, (java.util.UUID) submitted.get("applicationId")));
         assertThat(approved.get("status")).isEqualTo(CoachApplicationStatus.APPROVED);
-        assertThat(approved.get("invitation_expires_at")).isNotNull();
+        assertThat(approved.get("invitationExpiresAt")).isNotNull();
         assertThat(accounts()).isZero();
         assertThat(new JdbcTemplate(dataSource).queryForObject("select count(*) from coach_invitations where consumed_at is null", Long.class)).isEqualTo(1);
         assertThat(outboxRows()).isEqualTo(2);
@@ -206,27 +206,27 @@ class CoachApplicationWorkflowTest {
     @Test
     void repeatedApprovalOrRejectionReturnsConflict() {
         var submitted = inTx(() -> service.submit(application("repeat@example.com")));
-        var id = (java.util.UUID) submitted.get("application_id");
-        inTx(() -> service.approve(java.util.UUID.randomUUID(), id));
-        assertThatThrownBy(() -> inTx(() -> service.approve(java.util.UUID.randomUUID(), id)))
+        var id = (java.util.UUID) submitted.get("applicationId");
+        inTx(() -> service.approve(1L, id));
+        assertThatThrownBy(() -> inTx(() -> service.approve(1L, id)))
                 .isInstanceOfSatisfying(ApiException.class, e -> { assertThat(e.status).isEqualTo(409); assertThat(e.code).isEqualTo("INVALID_STATE"); });
-        assertThatThrownBy(() -> inTx(() -> service.reject(java.util.UUID.randomUUID(), id, "Too late")))
+        assertThatThrownBy(() -> inTx(() -> service.reject(1L, id, "Too late")))
                 .isInstanceOfSatisfying(ApiException.class, e -> assertThat(e.status).isEqualTo(409));
     }
 
     @Test
     void rejectionCreatesNoInvitation() {
         var submitted = inTx(() -> service.submit(application("reject@example.com")));
-        var rejected = inTx(() -> service.reject(java.util.UUID.randomUUID(), (java.util.UUID) submitted.get("application_id"), "Insufficient evidence"));
+        var rejected = inTx(() -> service.reject(1L, (java.util.UUID) submitted.get("applicationId"), "Insufficient evidence"));
         assertThat(rejected.get("status")).isEqualTo(CoachApplicationStatus.REJECTED);
-        assertThat(rejected.get("rejection_reason")).isEqualTo("Insufficient evidence");
+        assertThat(rejected.get("rejectionReason")).isEqualTo("Insufficient evidence");
         assertThat(new JdbcTemplate(dataSource).queryForObject("select count(*) from coach_invitations", Long.class)).isZero();
     }
 
     @Test
     void invitedRegistrationCreatesCoachOnceAndConsumesInvitation() {
         var submitted = inTx(() -> service.submit(application("invited@example.com")));
-        inTx(() -> service.approve(java.util.UUID.randomUUID(), (java.util.UUID) submitted.get("application_id")));
+        inTx(() -> service.approve(1L, (java.util.UUID) submitted.get("applicationId")));
 
         UserAuthInfo created = inTx(() -> credentials.create(CreateUserRequest.newBuilder()
                 .setEmail("invited@example.com").setFirstName("Sara").setLastName("Coach")
@@ -254,8 +254,8 @@ class CoachApplicationWorkflowTest {
     @Test
     void expiredInvitationDoesNotGrantCoach() {
         var submitted = inTx(() -> service.submit(application("expired@example.com")));
-        var id = (java.util.UUID) submitted.get("application_id");
-        inTx(() -> service.approve(java.util.UUID.randomUUID(), id));
+        var id = (java.util.UUID) submitted.get("applicationId");
+        inTx(() -> service.approve(1L, id));
         new JdbcTemplate(dataSource).update("update coach_invitations set expires_at = now() - interval '1 day' where application_id = ?", id);
         UserAuthInfo created = inTx(() -> credentials.create(CreateUserRequest.newBuilder()
                 .setEmail("expired@example.com").setFirstName("Late").setLastName("Applicant")

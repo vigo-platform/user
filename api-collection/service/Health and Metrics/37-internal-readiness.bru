@@ -1,0 +1,22 @@
+meta {
+  name: Internal readiness
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{management_url}}/actuator/health/readiness
+  body: none
+  auth: none
+}
+
+tests {
+  test("Reports the service as ready", function () {
+    expect(res.getStatus()).to.equal(200);
+    expect(res.getBody().status).to.equal("UP");
+  });
+}
+
+docs {
+  Use the management listener. Readiness includes the database and the gRPC server. An unready probe can return HTTP 503.
+}

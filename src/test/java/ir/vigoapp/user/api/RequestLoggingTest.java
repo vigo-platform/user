@@ -22,6 +22,8 @@ import ir.vigoapp.user.repository.CoachPlanRepository;
 import ir.vigoapp.user.repository.CoachRepository;
 import ir.vigoapp.user.repository.PlanSubscriptionRepository;
 import ir.vigoapp.user.repository.UserRepository;
+import ir.vigoapp.user.repository.plan.CoachPlanSelectionRepository;
+import ir.vigoapp.user.repository.plan.PlanCatalogRepository;
 import ir.vigoapp.user.service.CredentialService;
 import ir.vigoapp.user.service.ProfileService;
 import org.junit.jupiter.api.Test;
@@ -41,7 +43,6 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.Map;
-import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 
@@ -64,7 +65,7 @@ class RequestLoggingTest {
     private static final String PARENT_SPAN_ID = "0123456789abcdef";
     private static final String TRACEPARENT = "00-" + TRACE_ID + "-" + PARENT_SPAN_ID + "-01";
     private static final Pattern CORRELATION = Pattern.compile("\\[([0-9a-f]{32})-([0-9a-f]{16})\\]");
-    private static final UUID COACH = UUID.fromString("22222222-2222-4222-8222-222222222222");
+    private static final long COACH = 10L;
 
     @LocalServerPort int port;
     @LocalManagementPort int managementPort;
@@ -77,16 +78,17 @@ class RequestLoggingTest {
     @MockitoBean CoachExperienceRepository coachExperiences;
     @MockitoBean CoachPlanRepository coachPlans;
     @MockitoBean CoachPlanIncludeRepository coachPlanIncludes;
+    @MockitoBean CoachPlanSelectionRepository coachPlanSelections;
+    @MockitoBean PlanCatalogRepository planCatalog;
     @MockitoBean PlanSubscriptionRepository planSubscriptions;
     @MockitoBean CoachRepository coaches;
     @MockitoBean org.springframework.jdbc.core.JdbcTemplate jdbc;
-    @MockitoBean ir.vigoapp.user.service.OrderClient orderClient;
     @MockitoBean ProfileService profiles;
     @MockitoBean CredentialService credentials;
     @MockitoBean OutboxWriter outbox;
 
     @Test void httpKeepsSuccessfulReadsQuietAndTracesSecurityRejections(CapturedOutput output) throws Exception {
-        when(profiles.publicCoach(COACH)).thenReturn(Map.of("coach_id", COACH));
+        when(profiles.publicCoach(COACH)).thenReturn(Map.of("coachId", COACH));
         try (var client = HttpClient.newHttpClient()) {
             assertThat(get(client, port, "/api/v1/coaches/" + COACH + "?query=secret-query", TRACEPARENT)).isEqualTo(200);
             assertThat(get(client, port, "/api/v1/users/me", TRACEPARENT)).isEqualTo(401);

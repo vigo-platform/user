@@ -1,0 +1,26 @@
+meta {
+  name: Restore coach plan
+  type: http
+  seq: 10
+}
+
+post {
+  url: {{base_url}}/api/v1/coaches/me/plans/{{created_coach_plan_id}}/unarchive
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{process.env.USER_BEARER_TOKEN}}
+}
+
+tests {
+  test("Restores the archived plan", function () {
+    expect(res.getStatus()).to.equal(200);
+    expect(res.getBody().success).to.equal(true);
+  });
+}
+
+docs {
+  Use the plan owner's COACH access token and archive the plan before restoring it.
+}

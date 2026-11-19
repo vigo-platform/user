@@ -1,0 +1,27 @@
+meta {
+  name: Get user admin
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{base_url}}/api/v1/users/{{user_id}}
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{process.env.USER_BEARER_TOKEN}}
+}
+
+tests {
+  test("Returns the requested account", function () {
+    expect(res.getStatus()).to.equal(200);
+    expect(res.getBody().success).to.equal(true);
+    expect(res.getBody().data.userId).to.be.a("number").and.to.be.greaterThan(0);
+  });
+}
+
+docs {
+  Use an ADMIN access token and set user_id to a positive numeric ID from List users admin.
+}

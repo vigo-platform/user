@@ -9,7 +9,6 @@ import org.springframework.data.jpa.repository.*;
 import org.springframework.data.repository.query.Param;
 import java.util.*;
 public interface CoachRepository extends JpaRepository<CoachProfile,Long>, JpaSpecificationExecutor<CoachProfile> {
- @EntityGraph(attributePaths="user") Optional<CoachProfile> findByUser_PublicId(UUID id);
  @EntityGraph(attributePaths="user") Optional<CoachProfile> findByUserId(Long id);
 
  @EntityGraph(attributePaths="user")

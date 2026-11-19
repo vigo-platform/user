@@ -1,26 +1,38 @@
 package ir.vigoapp.user.entity.plan;
+
+import ir.vigoapp.user.entity.plan.catalog.PlanIncludeOption;
+import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.ForeignKey;
+import jakarta.persistence.Id;
+import jakarta.persistence.IdClass;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
-import lombok.Setter;
-import ir.vigoapp.user.domain.plan.PlanInclude;
-import jakarta.persistence.*;
+
+import java.io.Serializable;
+
 @Getter
-@Setter
 @NoArgsConstructor
-@Entity @Table(name="coach_plan_includes")
+@AllArgsConstructor
+@Entity
+@Table(name = "coach_plan_includes")
 @IdClass(CoachPlanInclude.Key.class)
 public class CoachPlanInclude {
- @Id @Column(name="plan_id") private Long planId;
- @Id @Enumerated(EnumType.STRING) @Column(name="include_key",length=30) private PlanInclude include;
+    @Id
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "plan_id", nullable = false,
+            foreignKey = @ForeignKey(name = "coach_plan_includes_plan_id_fkey"))
+    private CoachPlan plan;
 
- /** Composite key. Named Key so it does not shadow the jakarta.persistence.Id annotation. */
- @NoArgsConstructor
- @AllArgsConstructor
- public static class Key implements java.io.Serializable {
-  private Long planId;
-  private PlanInclude include;
-  @Override public boolean equals(Object other){return other instanceof Key key&&java.util.Objects.equals(planId,key.planId)&&include==key.include;}
-  @Override public int hashCode(){return java.util.Objects.hash(planId,include);}
- }
+    @Id
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "include_id", nullable = false,
+            foreignKey = @ForeignKey(name = "coach_plan_includes_option_fkey"))
+    private PlanIncludeOption includeOption;
+
+    public record Key(Long plan, Long includeOption) implements Serializable {}
 }

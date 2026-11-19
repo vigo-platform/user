@@ -9,14 +9,12 @@ import ir.vigoapp.user.domain.Gender;
 import ir.vigoapp.user.domain.Role;
 import jakarta.persistence.*;
 import java.time.*;
-import java.util.UUID;
 @Getter
 @Setter
 @NoArgsConstructor
 @Entity @Table(name="users")
 public class UserAccount {
  @Id @GeneratedValue(strategy=GenerationType.IDENTITY) private Long id;
- @Column(name="public_id",nullable=false,unique=true) private UUID publicId=UUID.randomUUID();
  @Column(length=254) private String email;
  @Column(length=16) private String phone;
  @Getter

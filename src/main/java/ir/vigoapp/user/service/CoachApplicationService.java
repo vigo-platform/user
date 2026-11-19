@@ -71,19 +71,19 @@ public class CoachApplicationService {
   applications.lockEmailForSubmission(email);
   var pending=applications.findByEmailIgnoreCaseAndStatus(email,CoachApplicationStatus.PENDING);
   if(pending.isPresent())return summary(pending.get(),issueLookupToken(pending.get()));
-  String firstName=Identifiers.name(r.first_name());
-  String lastName=Identifiers.name(r.last_name());
+  String firstName=Identifiers.name(r.firstName());
+  String lastName=Identifiers.name(r.lastName());
   var a=new CoachApplication();
   a.setFirstName(firstName);a.setLastName(lastName);
   a.setFullName((firstName+" "+lastName).strip());
-  a.setProfileImageFileId(uuidOrNull(r.profile_image_file_id()));
+  a.setProfileImageFileId(uuidOrNull(r.profileImageFileId()));
   a.setEmail(email);a.setPhone(phone);a.setHeadline(blankToNull(r.headline()));
   a.setBio(r.bio().strip());
   a.setSpecialties(json.writeValueAsString(r.specialties().stream().map(String::strip).toList()));
-  a.setExperienceYears(r.experience_years());
+  a.setExperienceYears(r.experienceYears());
   // Legacy column kept for the existing contract; structured rows are authoritative.
   a.setCertifications(json.writeValueAsString(r.certificates()==null?List.of():r.certificates()));
-  a.setInstagramHandle(blankToNull(r.instagram_handle()));
+  a.setInstagramHandle(blankToNull(r.instagramHandle()));
   a.setLocale(r.locale()==null?"fa":r.locale());
   a.setStatus(CoachApplicationStatus.PENDING);
   a.setAggregateVersion(1);
@@ -99,7 +99,7 @@ public class CoachApplicationService {
   data.put("application_id",a.getId());data.put("full_name",a.getFullName());data.put("email",a.getEmail());
   data.put("phone",a.getPhone());data.put("locale",a.getLocale());data.put("status",a.getStatus());
   data.put("submitted_at",a.getCreatedAt());
-  events.emit(a.getId(),a.getAggregateVersion(),"CoachApplicationSubmitted",data);
+  events.emit(a.getId(),a.getAggregateVersion(),"CoachApplicationSubmitted",1,data);
   log.atInfo().addKeyValue("event","coach_application_submitted").addKeyValue("result","STAGED")
    .addKeyValue("application_id",a.getId()).log("Public coach application staged for review.");
   return summary(a,lookupToken);
@@ -122,7 +122,7 @@ public class CoachApplicationService {
   var a=applications.findById(id).orElseThrow(ApiException::notFound);
   return view(a,invitationExpiry(id));
  }
- public Map<String,Object> approve(UUID actor,UUID id) {
+ public Map<String,Object> approve(long actor,UUID id) {
   var a=applications.lock(id).orElseThrow(ApiException::notFound);
   if(a.getStatus()!=CoachApplicationStatus.PENDING)throw ApiException.conflict("INVALID_STATE");
   // An invitation must be the only route to COACH. Refuse to issue one for an
@@ -143,13 +143,13 @@ public class CoachApplicationService {
   data.put("locale",a.getLocale());data.put("status",a.getStatus());
   data.put("invitation_token",token);data.put("invitation_expires_at",invitation.getExpiresAt());
   data.put("reviewed_by",actor);data.put("reviewed_at",now);
-  events.emit(a.getId(),a.getAggregateVersion(),"CoachApplicationApproved",data);
+  events.emit(a.getId(),a.getAggregateVersion(),"CoachApplicationApproved",2,data);
   log.atInfo().addKeyValue("event","coach_application_approved").addKeyValue("result","STAGED")
-   .addKeyValue("application_id",a.getId()).addKeyValue("actor_public_id",actor)
+   .addKeyValue("application_id",a.getId()).addKeyValue("actor_user_id",actor)
    .log("Coach application approved and a registration invitation issued.");
   return view(a,invitation.getExpiresAt());
  }
- public Map<String,Object> reject(UUID actor,UUID id,String reason) {
+ public Map<String,Object> reject(long actor,UUID id,String reason) {
   var a=applications.lock(id).orElseThrow(ApiException::notFound);
   if(a.getStatus()!=CoachApplicationStatus.PENDING)throw ApiException.conflict("INVALID_STATE");
   Instant now=Instant.now();
@@ -159,9 +159,9 @@ public class CoachApplicationService {
   data.put("application_id",a.getId());data.put("full_name",a.getFullName());data.put("email",a.getEmail());
   data.put("locale",a.getLocale());data.put("status",a.getStatus());data.put("reason",a.getRejectionReason());
   data.put("reviewed_by",actor);data.put("reviewed_at",now);
-  events.emit(a.getId(),a.getAggregateVersion(),"CoachApplicationRejected",data);
+  events.emit(a.getId(),a.getAggregateVersion(),"CoachApplicationRejected",2,data);
   log.atInfo().addKeyValue("event","coach_application_rejected").addKeyValue("result","STAGED")
-   .addKeyValue("application_id",a.getId()).addKeyValue("actor_public_id",actor).log("Coach application rejected.");
+   .addKeyValue("application_id",a.getId()).addKeyValue("actor_user_id",actor).log("Coach application rejected.");
   return view(a,null);
  }
  private void storeCertificates(CoachApplication a,List<Requests.Certificate> rows) {
@@ -174,13 +174,13 @@ public class CoachApplicationService {
    row.setTitle(source.title().strip());
    row.setIssuer(blankToNull(source.issuer()));
    if(source.category()==Requests.CertificateCategory.UNIVERSITY) {
-    row.setFieldOfStudy(blankToNull(source.field_of_study()));
+    row.setFieldOfStudy(blankToNull(source.fieldOfStudy()));
     row.setDegree(blankToNull(source.degree()));
-   } else if(source.field_of_study()!=null||source.degree()!=null) {
+   } else if(source.fieldOfStudy()!=null||source.degree()!=null) {
     // Reject academic fields on unrelated categories instead of silently dropping them.
-    throw new IllegalArgumentException("field_of_study and degree apply only to UNIVERSITY certificates");
+    throw new IllegalArgumentException("fieldOfStudy and degree apply only to UNIVERSITY certificates");
    }
-   row.setFileId(uuidOrNull(source.file_id()));
+   row.setFileId(uuidOrNull(source.fileId()));
    if(row.getFileId()==null)throw new IllegalArgumentException("A certificate document is required");
    row.setPosition(i);
    certificates.save(row);
@@ -195,7 +195,7 @@ public class CoachApplicationService {
    row.setTitle(source.title().strip());
    row.setOrganization(blankToNull(source.organization()));
    row.setDescription(blankToNull(source.description()));
-   row.setDurationMonths(source.duration_months());
+   row.setDurationMonths(source.durationMonths());
    row.setPosition(i);
    experiences.save(row);
   }
@@ -220,7 +220,7 @@ public class CoachApplicationService {
  }
  private static Map<String,Object> summary(CoachApplication a,String lookupToken) {
   Map<String,Object> v=new LinkedHashMap<>();
-  v.put("application_id",a.getId());v.put("status",a.getStatus());v.put("lookup_token",lookupToken);v.put("submitted_at",a.getCreatedAt());
+  v.put("applicationId",a.getId());v.put("status",a.getStatus());v.put("lookupToken",lookupToken);v.put("submittedAt",a.getCreatedAt());
   return v;
  }
  private static String blankToNull(String value) { return value==null||value.isBlank()?null:value.strip(); }

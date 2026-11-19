@@ -1,0 +1,94 @@
+meta {
+  name: Get coach plan form options
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{base_url}}/api/v1/coaches/me/plan/form-options
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{process.env.USER_BEARER_TOKEN}}
+}
+
+script:post-response {
+  if (res.getStatus() === 200 && res.getBody().success) {
+    const variablesByCode = {
+      PRIMARY_GOALS: "plan_primary_goals_field_id",
+      TRAINING_LOCATION: "plan_training_location_field_id",
+      WEEKLY_TRAINING_SESSIONS: "plan_weekly_training_sessions_field_id",
+      PLAN_LEVEL: "plan_level_field_id"
+    };
+    for (const field of res.getBody().data.generalFields) {
+      if (Object.hasOwn(variablesByCode, field.code)) {
+        bru.setVar(variablesByCode[field.code], String(field.id));
+      }
+    }
+    const review = res.getBody().data.features.find((feature) => feature.code === "PERIODIC_PLAN_REVIEW");
+    if (review) bru.setVar("plan_review_feature_id", String(review.id));
+  }
+}
+
+tests {
+  test("Returns the option lists for the coach plan form", function () {
+    expect(res.getStatus()).to.equal(200);
+    const { success, data } = res.getBody();
+    expect(success).to.equal(true);
+    for (const key of ["includeOptions", "generalFields", "features"]) {
+      expect(data[key]).to.be.an("array");
+      for (const item of data[key]) {
+        expect(item).to.include.all.keys("id", "code", "label");
+      }
+    }
+    expect(data.generalFields.map((field) => field.code)).to.include("PLAN_LEVEL");
+    for (const field of data.generalFields) {
+      expect(field).to.include.all.keys("id", "code", "label", "type", "helpText",
+        "valueType", "required", "validationRules");
+      expect(field.type).to.equal("FIELD");
+      expect(field.required).to.equal(true);
+      expect(field.validationRules).to.be.an("object");
+    }
+    for (const feature of data.features) {
+      expect(feature).to.have.all.keys("id", "code", "label");
+    }
+  });
+}
+
+docs {
+  Loads the options shown when a coach opens the create-plan form.
+  Set USER_BEARER_TOKEN to a COACH access token.
+  General fields include help text and validation rules.
+  Use Get coach plan feature details to load a feature's fields.
+  Submit every general field, including PLAN_LEVEL. Feature selection is optional.
+  A successful response saves the general field IDs and the periodic review feature ID for the collection examples.
+
+  Example response (HTTP 200, synthetic IDs):
+  ```json
+  {
+    "success": true,
+    "code": "SUCCESS",
+    "message": "Operation successful",
+    "messageFa": "عملیات موفق بود",
+    "data": {
+      "includeOptions": [{"id": 1, "code": "WORKOUT", "label": "برنامه تمرینی"}],
+      "generalFields": [
+        {
+          "id": 12,
+          "code": "PLAN_LEVEL",
+          "label": "سطح برنامه",
+          "type": "FIELD",
+          "helpText": "سطح‌هایی که این پلن برای آن‌ها مناسب است",
+          "valueType": "MULTI_SELECT",
+          "required": true,
+          "validationRules": {"options": [{"code": "BEGINNER", "label": "مبتدی"}]}
+        }
+      ],
+      "features": [{"id": 3, "code": "PERIODIC_PLAN_REVIEW", "label": "بازبینی دوره‌ای برنامه"}]
+    },
+    "timestamp": "2026-11-18T12:00:00Z"
+  }
+  ```
+}

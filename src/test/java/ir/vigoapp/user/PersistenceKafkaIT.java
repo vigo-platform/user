@@ -33,23 +33,23 @@ class PersistenceKafkaIT {
  @Autowired CredentialService credentials;@Autowired UserRepository users;@Autowired JdbcTemplate jdbc;@Autowired PlatformTransactionManager manager;@Autowired KafkaTemplate<String,String> producer;@Autowired OutboxWriter writer;
  @Autowired ProfileService profiles;
  @Test @Order(5) void retryHeadBlocksSuccessorAndExpiredLeaseReclaimsStableEvents(){
-  var created=credentials.create(request("ordered@example.test"));UUID id=users.findById(created.getUserId()).orElseThrow().getPublicId();
+  var created=credentials.create(request("ordered@example.test"));Long id=created.getUserId();
   new TransactionTemplate(manager).executeWithoutResult(s->{var u=users.lock(id).orElseThrow();writer.emit(u,"UserStatusChanged",Map.of("user_id",id,"old_status","ACTIVE","new_status","SUSPENDED"));});
-  var ids=jdbc.queryForList("select event_id from outbox where aggregate_id=? order by aggregate_version",UUID.class,id);
+  var ids=jdbc.queryForList("select event_id from outbox where aggregate_id=? order by aggregate_version",UUID.class,id.toString());
   @SuppressWarnings("unchecked") KafkaTemplate<String,String> failing=org.mockito.Mockito.mock(KafkaTemplate.class);
   org.mockito.Mockito.when(failing.send(org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString())).thenReturn(CompletableFuture.failedFuture(new IllegalStateException("synthetic broker failure")));
   var failedRelay=new OutboxRelay(jdbc,failing,manager,new SimpleMeterRegistry());failedRelay.poll();failedRelay.poll();
   org.mockito.Mockito.verify(failing,org.mockito.Mockito.times(1)).send(org.mockito.ArgumentMatchers.eq("user.events"),org.mockito.ArgumentMatchers.eq(id.toString()),org.mockito.ArgumentMatchers.anyString());
-  assertThat(jdbc.queryForObject("select count(*) from outbox where aggregate_id=? and published_at is null",Long.class,id)).isEqualTo(2);
+  assertThat(jdbc.queryForObject("select count(*) from outbox where aggregate_id=? and published_at is null",Long.class,id.toString())).isEqualTo(2);
   // Simulate a crashed worker's expired lease; another worker can reclaim only this head.
-  jdbc.update("update outbox set available_at=now(),lease_token=?,lease_until=now()-interval '1 second' where aggregate_id=? and aggregate_version=1",UUID.randomUUID(),id);
+  jdbc.update("update outbox set available_at=now(),lease_token=?,lease_until=now()-interval '1 second' where aggregate_id=? and aggregate_version=1",UUID.randomUUID(),id.toString());
   var relay=new OutboxRelay(jdbc,producer,manager,new SimpleMeterRegistry());relay.poll();
-  assertThat(jdbc.queryForObject("select count(*) from outbox where aggregate_id=? and published_at is null",Long.class,id)).isEqualTo(1);
-  relay.poll();assertThat(jdbc.queryForObject("select count(*) from outbox where aggregate_id=? and published_at is null",Long.class,id)).isZero();
-  assertThat(jdbc.queryForList("select event_id from outbox where aggregate_id=? order by aggregate_version",UUID.class,id)).containsExactlyElementsOf(ids);
+  assertThat(jdbc.queryForObject("select count(*) from outbox where aggregate_id=? and published_at is null",Long.class,id.toString())).isEqualTo(1);
+  relay.poll();assertThat(jdbc.queryForObject("select count(*) from outbox where aggregate_id=? and published_at is null",Long.class,id.toString())).isZero();
+  assertThat(jdbc.queryForList("select event_id from outbox where aggregate_id=? order by aggregate_version",UUID.class,id.toString())).containsExactlyElementsOf(ids);
  }
  @Test @Order(6) void twoRelayWorkersCannotOvertakeUnacknowledgedHead()throws Exception{
-  var created=credentials.create(request("workers@example.test"));UUID id=users.findById(created.getUserId()).orElseThrow().getPublicId();
+  var created=credentials.create(request("workers@example.test"));Long id=created.getUserId();
   new TransactionTemplate(manager).executeWithoutResult(s->{var u=users.lock(id).orElseThrow();writer.emit(u,"UserRoleChanged",Map.of("user_id",id,"old_role","ATHLETE","new_role","COACH"));});
   @SuppressWarnings("unchecked") KafkaTemplate<String,String> slow=org.mockito.Mockito.mock(KafkaTemplate.class);
   var pending=new CompletableFuture<org.springframework.kafka.support.SendResult<String,String>>();var entered=new CountDownLatch(1);
@@ -63,7 +63,7 @@ class PersistenceKafkaIT {
     pending.complete(null);worker.get(5,TimeUnit.SECONDS);
    }finally{pending.complete(null);}
   }
-  assertThat(jdbc.queryForObject("select count(*) from outbox where aggregate_id=? and published_at is null",Long.class,id)).isEqualTo(1);
+  assertThat(jdbc.queryForObject("select count(*) from outbox where aggregate_id=? and published_at is null",Long.class,id.toString())).isEqualTo(1);
   new OutboxRelay(jdbc,producer,manager,new SimpleMeterRegistry()).poll();
  }
  CreateUserRequest request(String email){return CreateUserRequest.newBuilder().setEmail(email).setFirstName("Synthetic").setLastName("User").setPasswordHash("synthetic-unchanged-hash").build();}
@@ -71,18 +71,18 @@ class PersistenceKafkaIT {
   seedCoach("suspended",Role.COACH,AccountStatus.SUSPENDED,CoachStatus.APPROVED);
   seedCoach("athlete",Role.ATHLETE,AccountStatus.ACTIVE,CoachStatus.APPROVED);
   seedCoach("pending",Role.COACH,AccountStatus.ACTIVE,CoachStatus.PENDING);
-  UUID first=seedCoach("first",Role.COACH,AccountStatus.ACTIVE,CoachStatus.APPROVED);
-  UUID second=seedCoach("second",Role.COACH,AccountStatus.ACTIVE,CoachStatus.APPROVED);
+  Long first=seedCoach("first",Role.COACH,AccountStatus.ACTIVE,CoachStatus.APPROVED);
+  Long second=seedCoach("second",Role.COACH,AccountStatus.ACTIVE,CoachStatus.APPROVED);
 
   var page=profiles.listPublicCoaches(0,1);
-  assertThat(page.total_elements()).isEqualTo(2);
-  assertThat(page.total_pages()).isEqualTo(2);
+  assertThat(page.totalElements()).isEqualTo(2);
+  assertThat(page.totalPages()).isEqualTo(2);
   assertThat(page.content()).singleElement().satisfies(coach->assertThat(coach)
-   .containsEntry("coach_id",first).doesNotContainKeys("status","rejection_reason","email","phone"));
-  assertThat(profiles.listPublicCoaches(1,1).content()).extracting(coach->coach.get("coach_id")).containsExactly(second);
+   .containsEntry("coachId",first).doesNotContainKeys("status","rejectionReason","email","phone"));
+  assertThat(profiles.listPublicCoaches(1,1).content()).extracting(coach->coach.get("coachId")).containsExactly(second);
   assertThat(profiles.listPublicCoaches(2,1).content()).isEmpty();
  }
- private UUID seedCoach(String name,Role role,AccountStatus accountStatus,CoachStatus coachStatus){
+ private Long seedCoach(String name,Role role,AccountStatus accountStatus,CoachStatus coachStatus){
   long id=credentials.create(request("coach-"+name+"@example.test")).getUserId();
   jdbc.update("update users set role=?, status=? where id=?",role.name(),accountStatus.name(),id);
   jdbc.update("""
@@ -91,7 +91,7 @@ class PersistenceKafkaIT {
    values (?, ?, 'Synthetic biography', '["fitness"]', 3, '[]', '[]', ?,
     timestamp '2025-01-01 00:00:00', timestamp '2025-01-01 00:00:00')
    """,id,name,coachStatus.name());
-  return users.findById(id).orElseThrow().getPublicId();
+  return id;
  }
  @Test @Order(1) void migrationAndConcurrentDatabaseUniqueness()throws Exception{
   try(var pool=Executors.newFixedThreadPool(2)){
@@ -117,7 +117,7 @@ class PersistenceKafkaIT {
  }
  @Test @Order(4) void brokerAckThenMarkAndStableEventIds(){
   var u=credentials.create(request("relay@example.test"));
-  UUID id=users.findById(u.getUserId()).orElseThrow().getPublicId();
+  Long id=u.getUserId();
   var relay=new OutboxRelay(jdbc,producer,manager,new SimpleMeterRegistry());
   relay.poll();
   assertThat(jdbc.queryForObject("select count(*) from outbox where published_at is null",Long.class)).isZero();
@@ -126,7 +126,7 @@ class PersistenceKafkaIT {
    consumer.subscribe(List.of("user.events"));String event=null;Instant deadline=Instant.now().plusSeconds(20);
    while(Instant.now().isBefore(deadline)&&event==null){for(var record:consumer.poll(Duration.ofSeconds(1)))if(id.toString().equals(record.key()))event=record.value();}
    assertThat(event).isNotNull().contains("UserRegistered","event_id","aggregate_version","user-service").doesNotContain("password_hash","synthetic-unchanged-hash");
-   String stored=jdbc.queryForObject("select payload from outbox where aggregate_id=?",String.class,id);assertThat(event).isEqualTo(stored);
+   String stored=jdbc.queryForObject("select payload from outbox where aggregate_id=?",String.class,id.toString());assertThat(event).isEqualTo(stored);
   }
  }
 }

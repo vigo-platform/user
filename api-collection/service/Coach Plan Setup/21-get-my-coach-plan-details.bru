@@ -1,0 +1,40 @@
+meta {
+  name: Get my coach plan details
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{base_url}}/api/v1/coaches/me/plan/{{plan_id}}
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{process.env.USER_BEARER_TOKEN}}
+}
+
+vars:pre-request {
+  plan_id: 1
+}
+
+tests {
+  test("Returns full owned plan details with status flags and timestamps", function () {
+    expect(res.getStatus()).to.equal(200);
+    const { success, data } = res.getBody();
+    expect(success).to.equal(true);
+    expect(data).to.include.all.keys("id", "coach_id", "description", "first_delivery_days", "status",
+      "is_active", "is_archived", "created_at", "updated_at", "includes", "features", "general_fields");
+    expect(data.is_active).to.be.a("boolean");
+    expect(data.is_archived).to.be.a("boolean");
+    expect(data.created_at).to.be.a("string");
+    expect(data.updated_at).to.be.a("string");
+    for (const key of ["includes", "features", "general_fields"]) expect(data[key]).to.be.an("array");
+    for (const feature of data.features) expect(feature.fields).to.be.an("array");
+  });
+}
+
+docs {
+  Set USER_BEARER_TOKEN to a COACH access token. Replace the sample plan_id in Vars with an id from List my coach plans.
+  Inactive and archived plans are readable by their owner. A missing plan or a plan owned by another coach returns HTTP 404 with code NOT_FOUND.
+}

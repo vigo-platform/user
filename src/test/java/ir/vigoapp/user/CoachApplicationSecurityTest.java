@@ -52,11 +52,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Import({SecurityConfig.class, CoachApplicationSecurityTest.Keys.class})
 class CoachApplicationSecurityTest {
     static final String ISSUER = "https://auth.example.test";
-    static final UUID ID = UUID.fromString("22222222-2222-4222-8222-222222222222");
     static final KeyPair KEY = key();
-    static final String BODY = "{\"first_name\":\"Sara\",\"last_name\":\"Coach\",\"email\":\"sara@example.test\","
+    static final String BODY = "{\"firstName\":\"Sara\",\"lastName\":\"Coach\",\"email\":\"sara@example.test\","
             + "\"bio\":\"Fifteen years coaching strength athletes.\",\"specialties\":[\"Strength\"],"
-            + "\"experience_years\":12}";
+            + "\"experienceYears\":12}";
 
     @Autowired MockMvc mvc;
     @MockitoBean CoachApplicationService applications;
@@ -87,13 +86,11 @@ class CoachApplicationSecurityTest {
     void setUp() {
         var account = new UserAccount();
         account.setId(1L);
-        account.setPublicId(ID);
         account.setRole(Role.ADMIN);
         when(users.findById(1L)).thenReturn(Optional.of(account));
-        when(users.findByPublicId(ID)).thenReturn(Optional.of(account));
-        when(applications.submit(any())).thenReturn(Map.of("application_id", UUID.randomUUID(),
-                "status", "PENDING", "lookup_token", "token", "submitted_at", Instant.now()));
-        when(applications.status("token")).thenReturn(Map.of("application_id", UUID.randomUUID(), "status", "PENDING"));
+        when(applications.submit(any())).thenReturn(Map.of("applicationId", UUID.randomUUID(),
+                "status", "PENDING", "lookupToken", "token", "submittedAt", Instant.now()));
+        when(applications.status("token")).thenReturn(Map.of("applicationId", UUID.randomUUID(), "status", "PENDING"));
         when(applications.list(0, 20, null)).thenReturn(new ir.vigoapp.user.dto.Views.Paged<>(0, 20, 0, 0, java.util.List.of()));
     }
 
@@ -127,8 +124,8 @@ class CoachApplicationSecurityTest {
     @Test
     void invalidSubmissionIsRejectedBeforeTheService() throws Exception {
         mvc.perform(post("/api/v1/coaches/applications").contentType("application/json")
-                        .content("{\"first_name\":\"S\",\"email\":\"not-an-email\",\"bio\":\"short\","
-                                + "\"specialties\":[],\"experience_years\":99}"))
+                        .content("{\"firstName\":\"S\",\"email\":\"not-an-email\",\"bio\":\"short\","
+                                + "\"specialties\":[],\"experienceYears\":99}"))
                 .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
     }
 

@@ -1,0 +1,50 @@
+meta {
+  name: Get coach plan feature details
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{base_url}}/api/v1/coaches/me/plan/form-options/features/{{plan_feature_id}}
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{process.env.USER_BEARER_TOKEN}}
+}
+
+vars:pre-request {
+  plan_feature_id: 10
+}
+
+script:post-response {
+  if (res.getStatus() === 200 && res.getBody().success) {
+    const feature = res.getBody().data;
+    if (feature.code === "PERIODIC_PLAN_REVIEW") {
+      const interval = feature.fields.find((field) => field.code === "REVIEW_INTERVAL_DAYS");
+      if (interval) bru.setVar("plan_review_interval_field_id", String(interval.id));
+    }
+  }
+}
+
+tests {
+  test("Returns the feature and its field definitions", function () {
+    expect(res.getStatus()).to.equal(200);
+    const { success, data } = res.getBody();
+    expect(success).to.equal(true);
+    expect(data).to.include.all.keys("id", "code", "label", "category", "fields");
+    expect(data.fields).to.be.an("array");
+    for (const field of data.fields) {
+      expect(field).to.include.all.keys("id", "code", "label", "valueType", "required", "validationRules");
+      expect(field.required).to.equal(false);
+      expect(field.validationRules).to.be.an("object");
+    }
+  });
+}
+
+docs {
+  Run Get coach plan form options first. This example loads the periodic review feature and saves its interval field ID for Update coach plan.
+  To inspect another feature, set plan_feature_id in Vars to its ID from data.features.
+  The response includes the feature's active field definitions in data.fields.
+}

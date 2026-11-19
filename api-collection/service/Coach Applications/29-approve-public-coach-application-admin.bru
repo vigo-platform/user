@@ -1,0 +1,30 @@
+meta {
+  name: Approve public coach application admin
+  type: http
+  seq: 10
+}
+
+post {
+  url: {{base_url}}/api/v1/admin/coaches/applications/{{coach_application_id}}/approve
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{process.env.USER_BEARER_TOKEN}}
+}
+
+tests {
+  test("Approves the application and issues an invitation", function () {
+    expect(res.getStatus()).to.equal(200);
+    expect(res.getBody().success).to.equal(true);
+    const { status, invitationExpiresAt } = res.getBody().data;
+    expect(status).to.equal("APPROVED");
+    expect(invitationExpiresAt).to.be.a("string");
+  });
+}
+
+docs {
+  Use an ADMIN access token and the UUID of a PENDING application with an unregistered email.
+  Approval issues a registration invitation for that email.
+}

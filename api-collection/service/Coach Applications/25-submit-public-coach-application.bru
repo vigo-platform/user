@@ -1,0 +1,48 @@
+meta {
+  name: Submit public coach application
+  type: http
+  seq: 6
+}
+
+post {
+  url: {{base_url}}/api/v1/coaches/applications
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "firstName": "Sam",
+    "lastName": "Example",
+    "email": "coach.applicant@example.test",
+    "headline": "Strength coach",
+    "bio": "A synthetic coaching biography for API testing only.",
+    "specialties": ["strength"],
+    "experienceYears": 3,
+    "locale": "en"
+  }
+}
+
+script:post-response {
+  if (res.getStatus() === 201 && res.getBody().success) {
+    const { applicationId, lookupToken } = res.getBody().data;
+    bru.setVar("coach_application_id", applicationId);
+    bru.setVar("coach_application_lookup_token", lookupToken);
+  }
+}
+
+tests {
+  test("Accepts the application as pending", function () {
+    expect(res.getStatus()).to.equal(201);
+    expect(res.getBody().success).to.equal(true);
+    const { applicationId, lookupToken, status } = res.getBody().data;
+    expect(applicationId).to.be.a("string").and.not.be.empty;
+    expect(lookupToken).to.be.a("string").and.not.be.empty;
+    expect(status).to.equal("PENDING");
+  });
+}
+
+docs {
+  Submit with no access token. Use a distinct synthetic email for each new application.
+  The response saves the application UUID and private lookup token as Bruno runtime variables.
+}

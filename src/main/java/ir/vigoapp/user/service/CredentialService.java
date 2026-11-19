@@ -57,7 +57,7 @@ public class CredentialService {
     c.setResultImageUrls("[]");c.setStatus(CoachStatus.APPROVED);coaches.saveAndFlush(c);
    }
   });
-  Map<String,Object> data=new LinkedHashMap<>();data.put("user_id",u.getPublicId());data.put("email",email);data.put("phone",phone);data.put("display_name",u.getDisplayName());data.put("role",u.getRole());data.put("status",u.getStatus());
+  Map<String,Object> data=new LinkedHashMap<>();data.put("user_id",u.getId());data.put("email",email);data.put("phone",phone);data.put("display_name",u.getDisplayName());data.put("role",u.getRole());data.put("status",u.getStatus());
   events.emit(u,"UserRegistered",data);return info(u);
  }
  public long change(ChangeUserPasswordRequest r){
