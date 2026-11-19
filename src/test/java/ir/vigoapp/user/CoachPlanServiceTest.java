@@ -204,18 +204,23 @@ class CoachPlanServiceTest {
         var fields = new ArrayList<>(required);
         fields.add(new PlanFieldValue(field.id(), json.readTree("14")));
         fields.sort(Comparator.comparingLong(PlanFieldValue::fieldId));
-        request.put("title", "Updated workout").set("fieldValues", json.valueToTree(fields));
-        var updated = service.update(coachA, planId, request);
+        var edit = json.readTree("""
+                {"features":[{"featureId":%d,"fields":[{"fieldId":%d,"value":14}]}]}
+                """.formatted(feature.id(), field.id()));
+        var updated = service.patch(coachA, planId, edit);
         assertThat(updated.featureIds()).containsExactly(feature.id());
         assertThat(savedAnswers(updated)).isEqualTo(fields);
 
         request.remove("featureIds");
-        assertThatThrownBy(() -> service.update(coachA, planId, request))
+        request.set("fieldValues", json.valueToTree(fields));
+        assertThatThrownBy(() -> service.create(coachA, request))
                 .isInstanceOfSatisfying(PlanValidationException.class, e -> assertThat(e.issues())
                         .extracting(PlanValidationIssue::code).containsExactly("FEATURE_NOT_SELECTED"));
         assertThat(service.own(coachA)).singleElement()
                 .satisfies(view -> assertThat(savedAnswers(view)).isEqualTo(fields));
-        var cleared = service.update(coachA, planId, plan("Workout", 100000, "WORKOUT"));
+        var cleared = service.patch(coachA, planId, json.readTree("""
+                {"features":[{"featureId":%d,"fields":null}]}
+                """.formatted(feature.id())));
         assertThat(cleared.featureIds()).isEmpty();
         assertThat(savedAnswers(cleared)).isEqualTo(required);
     }
@@ -260,13 +265,12 @@ class CoachPlanServiceTest {
         });
 
         String planPath = path + "/" + plan.path("planId").longValue();
-        var replaced = mvc.perform(put(planPath).principal(coach).contentType("application/json").content(request.toString()))
-                .andExpect(status().isOk()).andReturn().getResponse();
+        mvc.perform(put(planPath).principal(coach).contentType("application/json").content(request.toString()))
+                .andExpect(status().isMethodNotAllowed());
         var patched = mvc.perform(patch(planPath).principal(coach).contentType("application/json").content("{\"price\":120000}"))
                 .andExpect(status().isOk()).andReturn().getResponse();
         var listed = mvc.perform(get(path).principal(coach)).andExpect(status().isOk()).andReturn().getResponse();
-        for (var view : List.of(json.readTree(replaced.getContentAsByteArray()).path("data"),
-                json.readTree(patched.getContentAsByteArray()).path("data"),
+        for (var view : List.of(json.readTree(patched.getContentAsByteArray()).path("data"),
                 json.readTree(listed.getContentAsByteArray()).at("/data/0"))) {
             assertThat(view.path("features")).isEqualTo(plan.path("features"));
             assertThat(view.path("fieldValues")).isEqualTo(plan.path("fieldValues"));
@@ -308,14 +312,15 @@ class CoachPlanServiceTest {
         assertThatThrownBy(() -> inTx(() -> service.create(coachB, plan("New plan", 100000, "VIDEO_REVIEW"))))
                 .isInstanceOfSatisfying(ApiException.class, e -> assertThat(e.code).isEqualTo("VALIDATION_FAILED"));
 
-        var updated = inTx(() -> service.update(coachA, planId, plan("Edited plan", 100000, "VIDEO_REVIEW")));
+        var updated = inTx(() -> service.patch(coachA, planId,
+                json.readTree("{\"includes\":[{\"code\":\"VIDEO_REVIEW\"}]}")));
         assertThat(updated.includes()).containsExactly("VIDEO_REVIEW");
     }
 
     @Test
     void anotherCoachCannotEditArchiveOrRestoreSomeoneElsesPlan() {
         long planId = inTx(() -> service.create(coachA, plan("Mine", 100000, "WORKOUT"))).planId();
-        assertThatThrownBy(() -> inTx(() -> service.update(coachB, planId, plan("Hijack", 100000, "WORKOUT"))))
+        assertThatThrownBy(() -> inTx(() -> service.patch(coachB, planId, json.createObjectNode().put("title", "Hijack"))))
                 .isInstanceOfSatisfying(ApiException.class, e -> assertThat(e.status).isEqualTo(403));
         assertThatThrownBy(() -> inTx(() -> { service.archive(coachB, planId); return null; }))
                 .isInstanceOfSatisfying(ApiException.class, e -> assertThat(e.status).isEqualTo(403));
@@ -329,7 +334,7 @@ class CoachPlanServiceTest {
         assertThat(inTx(() -> service.marketplace(0, 20, null)).content()).hasSize(1);
         inTx(() -> { service.archive(coachA, planId); return null; });
         assertThat(inTx(() -> service.marketplace(0, 20, null)).content()).isEmpty();
-        assertThatThrownBy(() -> inTx(() -> service.update(coachA, planId, plan("Season 2", 100000, "WORKOUT"))))
+        assertThatThrownBy(() -> inTx(() -> service.patch(coachA, planId, json.createObjectNode().put("title", "Season 2"))))
                 .isInstanceOfSatisfying(ApiException.class, e -> assertThat(e.code).isEqualTo("PLAN_ARCHIVED"));
         assertThatThrownBy(() -> inTx(() -> { service.archive(coachA, planId); return null; }))
                 .isInstanceOfSatisfying(ApiException.class, e -> assertThat(e.status).isEqualTo(409));
@@ -346,8 +351,6 @@ class CoachPlanServiceTest {
         assertThat(service.requirePurchasable(planId).getId()).isEqualTo(planId);
 
         setStoredActivation(planId, false);
-        assertThatThrownBy(() -> service.update(coachA, planId, plan("Edited season", 120000, "WORKOUT")))
-                .isInstanceOfSatisfying(ApiException.class, e -> assertThat(e.code).isEqualTo("PLAN_INACTIVE"));
         assertThatThrownBy(() -> service.patch(coachA, planId, json.createObjectNode().put("isActive", true)))
                 .isInstanceOfSatisfying(ApiException.class, e -> {
                     assertThat(e.status).isEqualTo(409);
@@ -387,15 +390,12 @@ class CoachPlanServiceTest {
         assertThat(stored.compareAtPrice()).isEqualTo(10000);
         assertThat(stored.firstDeliveryDays()).isNull();
 
-        request.put("currency", "USD");
-        assertThatThrownBy(() -> service.update(coachA, created.planId(), request))
+        assertThatThrownBy(() -> service.patch(coachA, created.planId(), json.createObjectNode().put("currency", "USD")))
                 .isInstanceOfSatisfying(PlanValidationException.class, e -> assertThat(e.issues()).containsExactly(
-                        PlanValidationIssue.at("currency", "UNKNOWN_FIELD")));
+                        PlanValidationIssue.at("currency", "READ_ONLY_FIELD")));
         // Historical amounts retain their denomination when the coach edits a plan.
         new JdbcTemplate(dataSource).update("UPDATE coach_plans SET currency='USD', price=25, compare_at_price=NULL WHERE id=?", created.planId());
-        request.remove("currency");
-        request.put("price", 30);
-        var updated = service.update(coachA, created.planId(), request);
+        var updated = service.patch(coachA, created.planId(), json.createObjectNode().put("price", 30));
         assertThat(updated.price()).isEqualTo(30);
         assertThat(updated.compareAtPrice()).isEqualTo(30);
         assertThat(updated.currency()).isEqualTo("USD");
@@ -443,16 +443,16 @@ class CoachPlanServiceTest {
         assertThat(saved.firstDeliveryDays()).isZero();
         assertThat(saved.compareAtPrice()).isEqualTo(10000);
 
-        var edit = plan("ویرایش", 11000, "WORKOUT");
+        var edit = json.createObjectNode().put("price", 11000);
         String planUrl = url + "/" + saved.planId();
-        mvc.perform(put(planUrl).principal(coach).contentType("application/json").content(edit.toString()))
+        mvc.perform(patch(planUrl).principal(coach).contentType("application/json").content(edit.toString()))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.compareAtPrice").value(11000));
         edit.put("price", 12000).put("compareAtPrice", 15000);
-        mvc.perform(put(planUrl).principal(coach).contentType("application/json").content(edit.toString()))
+        mvc.perform(patch(planUrl).principal(coach).contentType("application/json").content(edit.toString()))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.price").value(12000))
                 .andExpect(jsonPath("$.data.compareAtPrice").value(15000));
-        edit.putNull("summary").putNull("compareAtPrice").putNull("firstDeliveryDays");
-        service.update(coachA, saved.planId(), edit);
+        service.patch(coachA, saved.planId(),
+                json.createObjectNode().putNull("summary").putNull("compareAtPrice").putNull("firstDeliveryDays"));
         var cleared = service.detail(saved.planId());
         assertThat(cleared.summary()).isNull();
         assertThat(cleared.compareAtPrice()).isNull();
@@ -576,8 +576,8 @@ class CoachPlanServiceTest {
                     .andExpect(status().isBadRequest());
             mvc.perform(patch(planPath).principal(coach).contentType("application/json").content("{\"private-input\":"))
                     .andExpect(status().isBadRequest());
-            var edit = plan("Updated plan", 120000, "WORKOUT");
-            mvc.perform(put(planPath).principal(coach).contentType("application/json").content(edit.toString()))
+            mvc.perform(patch(planPath).principal(coach).contentType("application/json")
+                            .content("{\"title\":\"Updated plan\"}"))
                     .andExpect(status().isOk());
             mvc.perform(patch(planPath).principal(coach).contentType("application/json").content("{}"))
                     .andExpect(status().isOk());

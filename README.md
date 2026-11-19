@@ -325,7 +325,6 @@ Auth must use contract 3.1.0 numeric subjects, production mTLS, and user status/
 | GET /api/v1/coaches/me/plan/form-options | COACH, returns active `includeOptions`, full `generalFields`, and `features` with only `id`, `code`, and `label` |
 | GET /api/v1/coaches/me/plan/form-options/features/{id} | COACH, returns the active feature and all its active field definitions in `fields` |
 | PATCH /api/v1/coaches/me/plans/{plan_id} | Owner COACH, partial update |
-| PUT /api/v1/coaches/me/plans/{plan_id} | Owner COACH, full submission |
 | DELETE /api/v1/coaches/me/plans/{plan_id} | Owner COACH, archives the plan |
 | POST /api/v1/coaches/me/plans/{plan_id}/unarchive | Owner COACH, restores the plan |
 
@@ -352,8 +351,8 @@ coach, including inactive and archived plans. The detail also includes `status`,
 `created_at` and `updated_at`. A missing plan or one owned by another coach
 returns `404 NOT_FOUND`.
 
-The authenticated coach can edit only their own active, unarchived plans. Both
-PATCH and PUT return 403 for another coach's plan, 404 for an unknown plan,
+The authenticated coach can edit only their own active, unarchived plans.
+PATCH returns 403 for another coach's plan, 404 for an unknown plan,
 `409 PLAN_ARCHIVED` for an archived plan, and `409 PLAN_INACTIVE` for an
 inactive plan. The catalog of services includes `WORKOUT`, `NUTRITION`,
 `SUPPLEMENT`, and `CHAT_SUPPORT`.
@@ -375,18 +374,11 @@ The coach can archive and restore their own plan.
 
 On POST, the server assigns the currency, initial status and `compareAtPrice`.
 The initial `compareAtPrice` equals `price`. Sending `compareAtPrice` in the POST
-body produces an `UNKNOWN_FIELD` issue. On POST and PUT, sending `currency`,
-`coachId` or `isActive` also produces `UNKNOWN_FIELD`. Older plans retain their
-stored currency on edit. On PUT, omitting `summary` or `firstDeliveryDays`
-preserves its stored value. Send an explicit JSON null to clear either field.
+body produces an `UNKNOWN_FIELD` issue. Sending `currency`, `coachId`, or
+`isActive` also produces `UNKNOWN_FIELD`. Older plans retain their stored
+currency on edit.
 
-PUT and PATCH both accept `compareAtPrice`. When `price` is supplied by itself,
-both prices take that value. When both are supplied, each takes its submitted
-value. A PATCH with only `compareAtPrice` changes just the comparison price.
-The comparison price can be equal to or higher than `price`. An explicit JSON
-null clears it.
-
-On POST and PUT, `fieldValues` contains entries with `fieldId` and `value`.
+On POST, `fieldValues` contains entries with `fieldId` and `value`.
 Supply all active required general fields, including `PLAN_LEVEL`. The form-options
 response includes `id`, `code`, `label`, `type`, `helpText`, `valueType`, `required`,
 and `validationRules` for each field in `generalFields`. Send level selections
@@ -403,11 +395,14 @@ identifies the owning feature and is null for general fields. For select fields,
 #### Partial edits with PATCH
 
 Send `PATCH /api/v1/coaches/me/plans/{planId}` with any subset of the editable
-properties. For example, `{"price":130000}` sets both prices to 130000. When
-both price fields are omitted, the stored prices are preserved. An empty object
-returns the current plan. Send JSON null to clear `summary`, `description`, or
-`firstDeliveryDays`. Supplied values for `title`, `price`, and `durationDays` must
-be non-null. The plan ID belongs in the URL.
+properties. For example, `{"price":130000}` sets both prices to 130000. Send
+`compareAtPrice` by itself to change only the comparison price, or with `price`
+to set both explicitly. The comparison price can be equal to or higher than
+`price`. Omitted properties keep their stored values, with the comparison price
+following a supplied `price` when `compareAtPrice` is omitted. An empty object
+returns the current plan. Send JSON null to clear `summary`, `description`,
+`firstDeliveryDays`, or `compareAtPrice`. Supplied values for `title`, `price`,
+and `durationDays` must be non-null. The plan ID belongs in the URL.
 
 Example with illustrative IDs from the form options and feature details
 
@@ -473,8 +468,7 @@ Example entries in `data` using illustrative field IDs
 ```
 
 V10 moves existing level selections into `coach_plan_field_values` and removes
-`coach_plan_levels`. A full PUT on a legacy plan requires values for all
-currently required general fields.
+`coach_plan_levels`.
 
 Plan endpoints use numeric identifiers. `planId` is the plan's ID and
 `coachId` is the coach's numeric user ID.

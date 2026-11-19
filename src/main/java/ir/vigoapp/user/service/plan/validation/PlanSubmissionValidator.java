@@ -35,8 +35,6 @@ public class PlanSubmissionValidator {
     private static final Set<String> ANSWER_PROPERTIES = Set.of("fieldId", "value");
     private final PlanCatalogRepository catalog;
 
-    private enum Operation { CREATE, UPDATE, PATCH }
-
     public record Submission(PlanWriteRequest request, List<Long> includeIds, List<Long> touchedFieldIds,
                              List<Long> removedFeatureIds) {}
 
@@ -45,28 +43,21 @@ public class PlanSubmissionValidator {
 
     /** Read the JSON without scalar coercion so one response can locate every independent input error. */
     public Submission validateCreate(JsonNode body, CoachPlan plan) {
-        return validate(body, plan, Set.of(), Operation.CREATE);
-    }
-
-    public Submission validateUpdate(JsonNode body, CoachPlan plan, Set<String> previouslyIncluded) {
-        return validate(body, plan, previouslyIncluded, Operation.UPDATE);
+        return validate(body, plan, Set.of(), false);
     }
 
     public Submission validatePatch(JsonNode body, CoachPlan plan, Set<String> previouslyIncluded) {
-        return validate(body, plan, previouslyIncluded, Operation.PATCH);
+        return validate(body, plan, previouslyIncluded, true);
     }
 
-    private Submission validate(JsonNode body, CoachPlan plan, Set<String> previouslyIncluded,
-                                Operation operation) {
+    private Submission validate(JsonNode body, CoachPlan plan, Set<String> previouslyIncluded, boolean partial) {
         if (body == null || !body.isObject()) {
             throw new PlanValidationException(List.of(at("$", "INVALID_VALUE_TYPE")));
         }
         var issues = new ArrayList<PlanValidationIssue>();
-        boolean partial = operation == Operation.PATCH;
-        boolean allowsComparisonPrice = operation != Operation.CREATE;
         var selections = partial ? PATCH_SELECTIONS : CREATE_SELECTIONS;
         for (var name : body.propertyNames()) {
-            boolean editableComparisonPrice = allowsComparisonPrice && name.equals("compareAtPrice");
+            boolean editableComparisonPrice = partial && name.equals("compareAtPrice");
             if (!SCALAR_PROPERTIES.contains(name) && !selections.contains(name) && !editableComparisonPrice) {
                 issues.add(at(name, partial && READ_ONLY.contains(name) ? "READ_ONLY_FIELD" : "UNKNOWN_FIELD"));
             }
@@ -84,7 +75,7 @@ public class PlanSubmissionValidator {
                 ? values.integer(body.path("price"), "price", null, true, minimumPrice, Long.MAX_VALUE)
                 : Long.valueOf(plan.getPrice());
         Long compareAtPrice = writesPrice ? price : plan.getCompareAtPrice();
-        if (allowsComparisonPrice && body.has("compareAtPrice")) {
+        if (partial && body.has("compareAtPrice")) {
             compareAtPrice = values.integer(body.path("compareAtPrice"), "compareAtPrice", null, false, 0, Long.MAX_VALUE);
             if (compareAtPrice != null && price != null && compareAtPrice < price) {
                 issues.add(at("compareAtPrice", "COMPARE_AT_PRICE_NOT_GREATER_THAN_PRICE"));

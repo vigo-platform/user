@@ -66,7 +66,6 @@ public class SecurityConfig {
      "/api/v1/coaches/me/plan/form-options/features/{id}").authenticated()
     .requestMatchers(GET,"/api/v1/coaches/me/plan","/api/v1/coaches/me/plan/{plan_id}").hasRole("COACH")
     .requestMatchers(POST,"/api/v1/coaches/me/plans").hasRole("COACH")
-    .requestMatchers(PUT,"/api/v1/coaches/me/plans/{plan_id}").hasRole("COACH")
     .requestMatchers(PATCH,"/api/v1/coaches/me/plans/{plan_id}").hasRole("COACH")
     .requestMatchers(DELETE,"/api/v1/coaches/me/plans/{plan_id}").hasRole("COACH")
     .requestMatchers(POST,"/api/v1/coaches/me/plans/{plan_id}/unarchive").hasRole("COACH")

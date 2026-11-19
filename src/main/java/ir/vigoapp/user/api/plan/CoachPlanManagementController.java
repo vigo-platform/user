@@ -57,13 +57,6 @@ public class CoachPlanManagementController {
         return Envelope.ok(service.create(coachId, body));
     }
 
-    @PutMapping("/{plan_id}")
-    public Envelope<ManagedCoachPlan> update(Authentication a, @PathVariable Long plan_id, @RequestBody JsonNode body) {
-        long coachId = id(a);
-        logWriteRequest("update", "PUT", coachId, plan_id);
-        return Envelope.ok(service.update(coachId, plan_id, body));
-    }
-
     @PatchMapping("/{plan_id}")
     public Envelope<ManagedCoachPlan> patch(Authentication a, @PathVariable Long plan_id, @RequestBody JsonNode body) {
         long coachId = id(a);

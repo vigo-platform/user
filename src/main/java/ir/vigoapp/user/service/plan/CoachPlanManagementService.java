@@ -69,21 +69,10 @@ public class CoachPlanManagementService {
         return write("create", coachId, null, outcome -> {
             var plan = new CoachPlan(requireApprovedCoach(coachId));
             var submission = validator.validateCreate(body, plan);
-            var created = save(plan, submission);
+            persist(plan, submission);
+            var created = view(plan);
             outcome.saved(plan, planChanges(null, created));
             return created;
-        });
-    }
-
-    public ManagedCoachPlan update(long coachId, Long planId, JsonNode body) {
-        return write("update", coachId, planId, outcome -> {
-            var plan = lockEditablePlan(coachId, planId);
-            var before = view(plan);
-            var submission = validator.validateUpdate(body, plan, Set.copyOf(before.includes()));
-            selections.clear(planId);
-            var updated = save(plan, submission);
-            outcome.saved(plan, planChanges(before, updated));
-            return updated;
         });
     }
 
@@ -107,11 +96,6 @@ public class CoachPlanManagementService {
             outcome.saved(plan, planChanges(before, updated));
             return updated;
         });
-    }
-
-    private ManagedCoachPlan save(CoachPlan plan, PlanSubmissionValidator.Submission submission) {
-        persist(plan, submission);
-        return view(plan);
     }
 
     private void persist(CoachPlan plan, PlanSubmissionValidator.Submission submission) {

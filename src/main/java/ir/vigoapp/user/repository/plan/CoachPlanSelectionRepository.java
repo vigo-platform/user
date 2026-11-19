@@ -101,28 +101,14 @@ public class CoachPlanSelectionRepository {
         return options;
     }
 
-    public void clear(long planId) {
-        clearIncludes(planId);
-        clearFieldValues(planId);
-        clearFeatures(planId);
-    }
-
     public void clearIncludes(long planId) {
         jdbc.sql("DELETE FROM coach_plan_includes WHERE plan_id = :planId").param("planId", planId).update();
-    }
-
-    private void clearFieldValues(long planId) {
-        jdbc.sql("DELETE FROM coach_plan_field_values WHERE plan_id = :planId").param("planId", planId).update();
     }
 
     public void clearFieldValues(long planId, List<Long> fieldIds) {
         if (fieldIds.isEmpty()) return;
         jdbc.sql("DELETE FROM coach_plan_field_values WHERE plan_id = :planId AND field_id = ANY(:ids)")
                 .param("planId", planId).param("ids", new SqlArrayValue("bigint", fieldIds.toArray())).update();
-    }
-
-    private void clearFeatures(long planId) {
-        jdbc.sql("DELETE FROM coach_plan_features WHERE plan_id = :planId").param("planId", planId).update();
     }
 
     public void removeFeatures(long planId, List<Long> featureIds) {

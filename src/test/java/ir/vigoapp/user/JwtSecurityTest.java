@@ -71,7 +71,7 @@ class JwtSecurityTest {
   verifyNoMoreInteractions(ownedPlans, formOptions);
   verifyNoInteractions(publicPlans);
  }
- @Test void planWritesAcceptLevelInFieldValuesWithNoFeatures() throws Exception {
+ @Test void planCreationAcceptsLevelInFieldValuesWithNoFeaturesAndPutIsDenied() throws Exception {
   users.findById(ID).orElseThrow().setRole(Role.COACH);
   String coachToken = good("COACH");
   String body = """
@@ -83,9 +83,9 @@ class JwtSecurityTest {
   mvc.perform(post("/api/v1/coaches/me/plans").header("Authorization", "Bearer " + coachToken)
     .contentType("application/json").content(body)).andExpect(status().isCreated());
   mvc.perform(put("/api/v1/coaches/me/plans/1").header("Authorization", "Bearer " + coachToken)
-    .contentType("application/json").content(body)).andExpect(status().isOk());
+    .contentType("application/json").content(body)).andExpect(status().isForbidden());
   verify(plans).create(ID, request);
-  verify(plans).update(ID, 1L, request);
+  verifyNoMoreInteractions(plans);
  }
  @Test void onlyCoachesCanPatchPlans() throws Exception {
   String path = "/api/v1/coaches/me/plans/1";
