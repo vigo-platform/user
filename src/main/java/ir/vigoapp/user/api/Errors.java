@@ -49,7 +49,7 @@ public class Errors {
    .addKeyValue("status",500).addKeyValue("error_code","INTERNAL_SERVER_ERROR").addKeyValue("reason",e.getClass().getSimpleName())
    .addKeyValue("http_method",request.getMethod()).addKeyValue("path",request.getAttribute(HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE));
   var caller=request.getUserPrincipal();
-  if(caller!=null)event.addKeyValue("actor_public_id",caller.getName());
+  if(caller!=null)event.addKeyValue("actor_user_id",caller.getName());
   event.log("User API request could not be completed.");
   return ResponseEntity.internalServerError().body(Envelope.error("INTERNAL_SERVER_ERROR","Internal server error","خطای داخلی سرور",null));
  }

@@ -45,8 +45,8 @@ class CoachPlanServiceTest {
     PlanCatalogRepository catalog;
     JsonMapper json = JsonMapper.builder().build();
 
-    UUID coachA = UUID.randomUUID();
-    UUID coachB = UUID.randomUUID();
+    long coachA;
+    long coachB;
 
     @BeforeAll
     static void start() throws Exception {
@@ -76,7 +76,8 @@ class CoachPlanServiceTest {
         service = new CoachPlanService(factory.getRepository(CoachPlanRepository.class),
                 factory.getRepository(CoachPlanIncludeRepository.class),
                 factory.getRepository(CoachRepository.class), catalog, new CoachPlanSelectionRepository(jdbc, json));
-        inTx(() -> { seedCoach(coachA); seedCoach(coachB); return null; });
+        coachA = inTx(() -> seedCoach("a"));
+        coachB = inTx(() -> seedCoach("b"));
     }
 
     private class JdbcTemplateReset {
@@ -86,10 +87,10 @@ class CoachPlanServiceTest {
         }
     }
 
-    private void seedCoach(UUID publicId) {
+    private long seedCoach(String name) {
         var u = new UserAccount();
-        u.setPublicId(publicId); u.setEmail(publicId + "@example.test");
-        u.setDisplayName("Coach " + publicId); u.replacePassword("hash");
+        u.setEmail(name + "@example.test");
+        u.setDisplayName("Coach " + name); u.replacePassword("hash");
         u.setRole(Role.COACH); u.setEmailVerified(true);
         em.persist(u);
         em.flush(); // @MapsId needs the generated identity before the profile is persisted.
@@ -97,6 +98,7 @@ class CoachPlanServiceTest {
         c.setUser(u); c.setDisplayName(u.getDisplayName()); c.setBio("Synthetic coach biography");
         c.setSpecialties("[]"); c.setStatus(CoachStatus.APPROVED);
         em.persist(c);
+        return u.getId();
     }
 
     private <T> T inTx(java.util.function.Supplier<T> work) { return tx.execute(s -> work.get()); }
@@ -142,22 +144,22 @@ class CoachPlanServiceTest {
         var required = requiredPlanFields();
         var request = new Requests.Plan("Workout", null, 100000L, 30, List.of("WORKOUT"), List.of(feature.id()), required);
         var created = inTx(() -> service.create(coachA, request));
-        var planId = (Long) created.get("plan_id");
-        assertThat(created).containsEntry("feature_ids", List.of(feature.id())).containsEntry("field_values", required);
+        var planId = (Long) created.get("planId");
+        assertThat(created).containsEntry("featureIds", List.of(feature.id())).containsEntry("fieldValues", required);
 
         var fields = new ArrayList<>(required);
         fields.add(new PlanFieldValue(field.id(), json.readTree("14")));
         fields.sort(Comparator.comparingLong(PlanFieldValue::fieldId));
         var updated = new Requests.Plan("Updated workout", null, 100000L, 30, List.of("WORKOUT"), List.of(feature.id()), fields);
         assertThat(inTx(() -> service.update(coachA, planId, updated)))
-                .containsEntry("feature_ids", List.of(feature.id())).containsEntry("field_values", fields);
+                .containsEntry("featureIds", List.of(feature.id())).containsEntry("fieldValues", fields);
 
         var unselected = new Requests.Plan("Updated workout", null, 100000L, 30, List.of("WORKOUT"), null, fields);
         assertThatThrownBy(() -> inTx(() -> service.update(coachA, planId, unselected)))
                 .isInstanceOf(ApiException.class).hasMessage("Select the feature before setting REVIEW_INTERVAL_DAYS");
-        assertThat(inTx(() -> service.detail(planId))).containsEntry("field_values", fields);
+        assertThat(inTx(() -> service.detail(planId))).containsEntry("fieldValues", fields);
         assertThat(inTx(() -> service.update(coachA, planId, plan("Workout", 100000, "WORKOUT"))))
-                .containsEntry("feature_ids", List.of()).containsEntry("field_values", required);
+                .containsEntry("featureIds", List.of()).containsEntry("fieldValues", required);
     }
 
     @Test
@@ -230,7 +232,7 @@ class CoachPlanServiceTest {
 
         var created = inTx(() -> service.create(coachA, plan("Complete plan", 100000,
                 "WORKOUT", "NUTRITION", "SUPPLEMENT", "CHAT_SUPPORT", "VIDEO_REVIEW")));
-        Long planId = (Long) created.get("plan_id");
+        Long planId = (Long) created.get("planId");
         assertThat(created).containsEntry("includes",
                 List.of("WORKOUT", "NUTRITION", "SUPPLEMENT", "CHAT_SUPPORT", "VIDEO_REVIEW"));
 
@@ -244,7 +246,7 @@ class CoachPlanServiceTest {
 
     @Test
     void anotherCoachCannotEditArchiveOrActivateSomeoneElsesPlan() {
-        Long planId = (Long) inTx(() -> service.create(coachA, plan("Mine", 100000, "WORKOUT"))).get("plan_id");
+        Long planId = (Long) inTx(() -> service.create(coachA, plan("Mine", 100000, "WORKOUT"))).get("planId");
         assertThatThrownBy(() -> inTx(() -> service.update(coachB, planId, plan("Hijack", 100000, "WORKOUT"))))
                 .isInstanceOfSatisfying(ApiException.class, e -> assertThat(e.status).isEqualTo(403));
         assertThatThrownBy(() -> inTx(() -> { service.archive(coachB, planId); return null; }))
@@ -255,7 +257,7 @@ class CoachPlanServiceTest {
 
     @Test
     void archivedPlanLeavesMarketplaceAndCannotBeEdited() {
-        Long planId = (Long) inTx(() -> service.create(coachA, plan("Season", 100000, "WORKOUT"))).get("plan_id");
+        Long planId = (Long) inTx(() -> service.create(coachA, plan("Season", 100000, "WORKOUT"))).get("planId");
         assertThat(inTx(() -> service.marketplace(0, 20, null)).content()).hasSize(1);
         inTx(() -> { service.archive(coachA, planId); return null; });
         assertThat(inTx(() -> service.marketplace(0, 20, null)).content()).isEmpty();
@@ -267,7 +269,7 @@ class CoachPlanServiceTest {
 
     @Test
     void reactivatingRestoresMarketplaceVisibility() {
-        Long planId = (Long) inTx(() -> service.create(coachA, plan("Season", 100000, "WORKOUT"))).get("plan_id");
+        Long planId = (Long) inTx(() -> service.create(coachA, plan("Season", 100000, "WORKOUT"))).get("planId");
         inTx(() -> { service.archive(coachA, planId); return null; });
         inTx(() -> { service.activate(coachA, planId); return null; });
         assertThat(inTx(() -> service.marketplace(0, 20, null)).content()).hasSize(1);
@@ -276,14 +278,13 @@ class CoachPlanServiceTest {
 
     @Test
     void unapprovedCoachCannotCreatePlans() {
-        UUID pending = UUID.randomUUID();
-        inTx(() -> {
+        long pending = inTx(() -> {
             var u = new UserAccount();
-            u.setPublicId(pending); u.setEmail("pending@example.test"); u.setDisplayName("Pending");
+            u.setEmail("pending@example.test"); u.setDisplayName("Pending");
             u.replacePassword("hash"); u.setRole(Role.ATHLETE); u.setEmailVerified(true);
             em.persist(u);
             em.flush();
-            return null;
+            return u.getId();
         });
         assertThatThrownBy(() -> inTx(() -> service.create(pending, plan("Nope", 100000, "WORKOUT"))))
                 .isInstanceOfSatisfying(ApiException.class, e -> assertThat(e.status).isEqualTo(403));
@@ -291,7 +292,7 @@ class CoachPlanServiceTest {
 
     @Test
     void detailOfArchivedPlanIsNotFoundForCustomers() {
-        Long planId = (Long) inTx(() -> service.create(coachA, plan("Season", 100000, "WORKOUT"))).get("plan_id");
+        Long planId = (Long) inTx(() -> service.create(coachA, plan("Season", 100000, "WORKOUT"))).get("planId");
         inTx(() -> { service.archive(coachA, planId); return null; });
         assertThatThrownBy(() -> inTx(() -> service.detail(planId)))
                 .isInstanceOfSatisfying(ApiException.class, e -> assertThat(e.status).isEqualTo(404));

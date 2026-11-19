@@ -25,7 +25,7 @@ public class CoachApplicationController {
   limiter.requireAllowed(clientKey(request));
   var result=service.submit(body);
   log.atInfo().addKeyValue("event","coach_application_received").addKeyValue("result","SUCCESS")
-   .addKeyValue("application_id",result.get("application_id")).log("Public coach application accepted for review.");
+   .addKeyValue("application_id",result.get("applicationId")).log("Public coach application accepted for review.");
   return Envelope.ok(result);
  }
  @GetMapping("/{lookup_token}")

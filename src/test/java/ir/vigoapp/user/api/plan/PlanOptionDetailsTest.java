@@ -53,13 +53,13 @@ class PlanOptionDetailsTest {
         mvc.perform(get(FORM_URL).with(coach))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.levels").doesNotHaveJsonPath())
-                .andExpect(jsonPath("$.data.general_fields[0].code").value("PLAN_LEVEL"))
-                .andExpect(jsonPath("$.data.general_fields[0].required").value(true));
+                .andExpect(jsonPath("$.data.generalFields[0].code").value("PLAN_LEVEL"))
+                .andExpect(jsonPath("$.data.generalFields[0].required").value(true));
         mvc.perform(get(FIELD_URL, level.id()).with(coach))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.required").value(true))
-                .andExpect(jsonPath("$.data.value_type").value("MULTI_SELECT"))
-                .andExpect(jsonPath("$.data.validation_rules.options[0].code").value("BEGINNER"));
+                .andExpect(jsonPath("$.data.valueType").value("MULTI_SELECT"))
+                .andExpect(jsonPath("$.data.validationRules.options[0].code").value("BEGINNER"));
     }
 
     @Test
@@ -80,16 +80,16 @@ class PlanOptionDetailsTest {
                 .andExpect(jsonPath("$.data.fields.length()").value(2))
                 .andExpect(jsonPath("$.data.fields[0].code").value(field.code()))
                 .andExpect(jsonPath("$.data.fields[0].required").value(false))
-                .andExpect(jsonPath("$.data.fields[0].validation_rules.max").value(90))
+                .andExpect(jsonPath("$.data.fields[0].validationRules.max").value(90))
                 .andExpect(jsonPath("$.data.fields[1].code").value(secondField.code()))
-                .andExpect(jsonPath("$.data.fields[1].validation_rules.max").value(10));
+                .andExpect(jsonPath("$.data.fields[1].validationRules.max").value(10));
         mvc.perform(get(FIELD_URL, 1).with(user("coach").roles("COACH")))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.type").value("FIELD"))
                 .andExpect(jsonPath("$.data.code").value(field.code()))
                 .andExpect(jsonPath("$.data.fields").doesNotExist())
-                .andExpect(jsonPath("$.data.value_type").value("INTEGER"))
+                .andExpect(jsonPath("$.data.valueType").value("INTEGER"))
                 .andExpect(jsonPath("$.data.required").value(false))
-                .andExpect(jsonPath("$.data.validation_rules.min").value(1));
+                .andExpect(jsonPath("$.data.validationRules.min").value(1));
     }
 
     @Test

@@ -73,16 +73,16 @@ class CoachLookupRegressionTest {
   var response=mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/v1/coaches"))
    .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk()).andReturn();
   var tree=JsonMapper.builder().build().readTree(response.getResponse().getContentAsString());
-  String coachId=null;
+  Long coachId=null;
   for(var coach:tree.path("data").path("content"))
-   if(("Coach "+id).equals(coach.path("display_name").asText()))coachId=coach.path("coach_id").asText();
-  assertThat(coachId).isEqualTo(id.toString());
+   if(("Coach "+id).equals(coach.path("displayName").asText()))coachId=coach.path("coachId").longValue();
+  assertThat(coachId).isEqualTo(id);
   mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/v1/coaches/"+coachId))
    .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk())
-   .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.data.coach_id").value(coachId));
+   .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.data.coachId").value(coachId));
   mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/v1/admin/coaches/"+coachId))
    .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk());
-  var actor=new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(UUID.randomUUID().toString(),null);
+  var actor=new org.springframework.security.authentication.UsernamePasswordAuthenticationToken("1",null);
   mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/v1/admin/coaches/"+coachId+"/approve").principal(actor))
    .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isConflict())
    .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.code").value("INVALID_STATE"));
@@ -94,69 +94,66 @@ class CoachLookupRegressionTest {
  @Test void publicListIdResolvesBothDetailsAndDecisionsReturnConflictNotNotFound() {
   var id=seed(CoachStatus.APPROVED);
   var returned=profiles.listPublicCoaches(0,100).content().stream()
-   .filter(c->"Coach ".concat(id.toString()).equals(c.get("display_name"))).findFirst().orElseThrow();
-  UUID coachId=(UUID)returned.get("coach_id");
+   .filter(c->"Coach ".concat(id.toString()).equals(c.get("displayName"))).findFirst().orElseThrow();
+  long coachId=(Long)returned.get("coachId");
   assertThat(coachId).isEqualTo(id);
-  assertThat(profiles.publicCoach(coachId)).containsEntry("coach_id",id).containsEntry("avatar_url","https://example.test/avatar");
-  assertThat(profiles.adminCoach(coachId)).containsEntry("coach_id",id);
-  assertConflict(()->profiles.decide(UUID.randomUUID(),coachId,true,null));
-  assertConflict(()->profiles.decide(UUID.randomUUID(),coachId,false,"Not pending"));
+  assertThat(profiles.publicCoach(coachId)).containsEntry("coachId",id).containsEntry("avatarUrl","https://example.test/avatar");
+  assertThat(profiles.adminCoach(coachId)).containsEntry("coachId",id);
+  assertConflict(()->profiles.decide(1L,coachId,true,null));
+  assertConflict(()->profiles.decide(1L,coachId,false,"Not pending"));
  }
  @Test void pendingAdminListIdCanBeApproved() { assertPendingDecision(true); }
  @Test void pendingAdminListIdCanBeRejected() { assertPendingDecision(false); }
  private void assertPendingDecision(boolean approve) {
   var id=seed(CoachStatus.PENDING);
   var returned=profiles.listCoaches(0,100,CoachStatus.PENDING).content().stream()
-   .filter(c->"Coach ".concat(id.toString()).equals(c.get("display_name"))).findFirst().orElseThrow();
-  UUID coachId=(UUID)returned.get("coach_id");
+   .filter(c->"Coach ".concat(id.toString()).equals(c.get("displayName"))).findFirst().orElseThrow();
+  long coachId=(Long)returned.get("coachId");
   assertThat(coachId).isEqualTo(id);
-  assertThat(profiles.adminCoach(coachId)).containsEntry("coach_id",id);
-  assertThat(profiles.decide(UUID.randomUUID(),coachId,approve,"Review reason"))
-   .containsEntry("coach_id",id).containsEntry("status",approve?CoachStatus.APPROVED:CoachStatus.REJECTED);
+  assertThat(profiles.adminCoach(coachId)).containsEntry("coachId",id);
+  assertThat(profiles.decide(1L,coachId,approve,"Review reason"))
+   .containsEntry("coachId",id).containsEntry("status",approve?CoachStatus.APPROVED:CoachStatus.REJECTED);
  }
  @Test void existingUserProxyMustNotChangePublicEligibilityOrReturnedId() {
   var id=seed(CoachStatus.APPROVED);
-  long internalId=users.findByPublicId(id).orElseThrow().getId();
   new TransactionTemplate(manager).executeWithoutResult(tx->{
-   var reference=em.getReference(UserAccount.class,internalId);
+   var reference=em.getReference(UserAccount.class,id);
    assertThat(org.hibernate.Hibernate.isInitialized(reference)).isFalse();
-   assertThat(profiles.publicCoach(id)).containsEntry("coach_id",id).containsEntry("avatar_url","https://example.test/avatar");
-   assertThat(profiles.adminCoach(id)).containsEntry("coach_id",id);
+   assertThat(profiles.publicCoach(id)).containsEntry("coachId",id).containsEntry("avatarUrl","https://example.test/avatar");
+   assertThat(profiles.adminCoach(id)).containsEntry("coachId",id);
   });
  }
  @Test void existingUserProxyMustNotCorruptPublicListId() {
   var id=seed(CoachStatus.APPROVED);
-  long internalId=users.findByPublicId(id).orElseThrow().getId();
   new TransactionTemplate(manager).executeWithoutResult(tx->{
-   em.getReference(UserAccount.class,internalId);
+   em.getReference(UserAccount.class,id);
    var returned=profiles.listPublicCoaches(0,100).content().stream()
-    .filter(c->("Coach "+id).equals(c.get("display_name"))).findFirst().orElseThrow();
-   assertThat(returned).containsEntry("coach_id",id).containsEntry("avatar_url","https://example.test/avatar");
-   assertThat(profiles.publicCoach((UUID)returned.get("coach_id"))).containsEntry("coach_id",id);
+    .filter(c->("Coach "+id).equals(c.get("displayName"))).findFirst().orElseThrow();
+   assertThat(returned).containsEntry("coachId",id).containsEntry("avatarUrl","https://example.test/avatar");
+   assertThat(profiles.publicCoach((Long)returned.get("coachId"))).containsEntry("coachId",id);
   });
  }
  @Test void decisionWithExistingUserProxyPersistsTheRealAccountRole() {
   var id=seed(CoachStatus.PENDING);
-  long internalId=users.findByPublicId(id).orElseThrow().getId();
   new TransactionTemplate(manager).executeWithoutResult(tx->{
-   em.getReference(UserAccount.class,internalId);
-   assertThat(profiles.decide(UUID.randomUUID(),id,true,null)).containsEntry("coach_id",id);
+   em.getReference(UserAccount.class,id);
+   assertThat(profiles.decide(1L,id,true,null)).containsEntry("coachId",id);
   });
-  assertThat(users.findByPublicId(id).orElseThrow().getRole()).isEqualTo(Role.COACH);
+  assertThat(users.findById(id).orElseThrow().getRole()).isEqualTo(Role.COACH);
  }
  @Test void unknownCoachRemainsNotFound() {
-  var unknown=UUID.randomUUID();
+  long unknown=Long.MAX_VALUE;
   assertThatThrownBy(()->profiles.publicCoach(unknown)).isInstanceOfSatisfying(ApiException.class,e->assertThat(e.status).isEqualTo(404));
   assertThatThrownBy(()->profiles.adminCoach(unknown)).isInstanceOfSatisfying(ApiException.class,e->assertThat(e.status).isEqualTo(404));
-  assertThatThrownBy(()->profiles.decide(UUID.randomUUID(),unknown,true,null)).isInstanceOfSatisfying(ApiException.class,e->assertThat(e.status).isEqualTo(404));
+  assertThatThrownBy(()->profiles.decide(1L,unknown,true,null)).isInstanceOfSatisfying(ApiException.class,e->assertThat(e.status).isEqualTo(404));
  }
- private UUID seed(CoachStatus status) {
+ private Long seed(CoachStatus status) {
   return new TransactionTemplate(manager).execute(tx->{
    var u=new UserAccount();u.setEmail(UUID.randomUUID()+"@example.test");u.setDisplayName("Synthetic Coach");
    u.replacePassword("synthetic-hash");u.setAvatarUrl("https://example.test/avatar");
    u.setRole(status==CoachStatus.APPROVED?Role.COACH:Role.ATHLETE);users.saveAndFlush(u);
-   var c=new CoachProfile();c.setUser(u);c.setDisplayName("Coach "+u.getPublicId());c.setBio("Synthetic coach biography");c.setSpecialties("[]");c.setStatus(status);
-   coaches.saveAndFlush(c);return u.getPublicId();
+   var c=new CoachProfile();c.setUser(u);c.setDisplayName("Coach "+u.getId());c.setBio("Synthetic coach biography");c.setSpecialties("[]");c.setStatus(status);
+   coaches.saveAndFlush(c);return u.getId();
   });
  }
  private void assertConflict(Runnable action) {

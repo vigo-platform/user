@@ -33,33 +33,24 @@ public class SecurityConfig {
   return decoder;
  }
  public static OAuth2TokenValidator<Jwt> tokenValidator(String issuer,String audience) {
-  var types=new JwtTypeValidator("JWT","at+jwt");
-  types.setAllowEmpty(true);
-  return JwtValidators.createDefaultWithValidators(List.of(new JwtIssuerValidator(issuer),types,claimsValidator(audience)));
+  return JwtValidators.createDefaultWithValidators(List.of(
+   new JwtIssuerValidator(issuer),new JwtTypeValidator("at+jwt"),claimsValidator(audience)));
  }
  private static OAuth2TokenValidator<Jwt> claimsValidator(String audience) {
   return jwt->{
    try {
     String subject=jwt.getSubject();
-    if(isAuthAccessToken(jwt)) {
-     long id=Long.parseLong(subject);
-     if(id<=0||!Long.toString(id).equals(subject)||!"access".equals(jwt.getClaim("token_use")))throw new IllegalArgumentException();
-    } else if(!UUID.fromString(subject).toString().equals(subject))throw new IllegalArgumentException();
+    long id=Long.parseLong(subject);
+    if(id<=0||!Long.toString(id).equals(subject)||!"access".equals(jwt.getClaim("token_use")))throw new IllegalArgumentException();
     if(signedRoles(jwt).isEmpty())throw new IllegalArgumentException();
     if(!jwt.getAudience().contains(audience)||jwt.getExpiresAt()==null)throw new IllegalArgumentException();
     return OAuth2TokenValidatorResult.success();
    }catch(RuntimeException e){return OAuth2TokenValidatorResult.failure(new OAuth2Error("invalid_token","Invalid access token claims",null));}
   };
  }
- private static boolean isAuthAccessToken(Jwt jwt) {
-  return jwt.getHeaders().get("typ") instanceof String type&&"at+jwt".equalsIgnoreCase(type);
- }
  private static List<Role> signedRoles(Jwt jwt) {
-  if(isAuthAccessToken(jwt)) {
-   if(!(jwt.getClaim("roles") instanceof List<?> roles))throw new IllegalArgumentException();
-   return roles.stream().map(role->Role.valueOf((String)role)).toList();
-  }
-  return List.of(Role.valueOf(jwt.getClaimAsString("role")));
+  if(!(jwt.getClaim("roles") instanceof List<?> roles))throw new IllegalArgumentException();
+  return roles.stream().map(role->Role.valueOf((String)role)).toList();
  }
  @Bean SecurityFilterChain apiSecurity(HttpSecurity http,UserRepository users,ObjectMapper json,Environment environment) throws Exception {
   http.csrf(c->c.disable()).sessionManagement(s->s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
@@ -96,12 +87,12 @@ public class SecurityConfig {
    .exceptionHandling(e->e.authenticationEntryPoint((r,s,x)->write(json,r,s,401,x)).accessDeniedHandler((r,s,x)->write(json,r,s,403,x)))
    .oauth2ResourceServer(o->o.authenticationEntryPoint((r,s,x)->write(json,r,s,401,x)).jwt(j->j.jwtAuthenticationConverter(jwt->{
     String subject=jwt.getSubject();
-    var result=isAuthAccessToken(jwt)?users.findById(Long.parseLong(subject)):users.findByPublicId(UUID.fromString(subject));
+    var result=users.findById(Long.parseLong(subject));
     var account=result.orElseThrow(()->new org.springframework.security.oauth2.core.OAuth2AuthenticationException("invalid_token"));
     if(account.getStatus()!=AccountStatus.ACTIVE)throw new org.springframework.security.oauth2.core.OAuth2AuthenticationException("invalid_token");
     // Signed role AND authoritative DB role required. Never read X-User-* headers.
     var authorities=signedRoles(jwt).contains(account.getRole())?List.of(new SimpleGrantedAuthority("ROLE_"+account.getRole().name())):List.<SimpleGrantedAuthority>of();
-    return new JwtAuthenticationToken(jwt,authorities,account.getPublicId().toString());
+    return new JwtAuthenticationToken(jwt,authorities,subject);
    })));
   return http.build();
  }
@@ -110,7 +101,7 @@ public class SecurityConfig {
    .addKeyValue("status",code).addKeyValue("reason",failure.getClass().getSimpleName()).addKeyValue("http_method",request.getMethod())
    .addKeyValue("path",request.getRequestURI()).addKeyValue("ip_address",request.getRemoteAddr());
   var caller=request.getUserPrincipal();
-  if(caller!=null)event.addKeyValue("actor_public_id",caller.getName());
+  if(caller!=null)event.addKeyValue("actor_user_id",caller.getName());
   event.log(code==401?"User API request requires authentication.":"User API request access denied.");
   response.setStatus(code);response.setContentType("application/json");
   if(code==401)response.setHeader("WWW-Authenticate","Bearer");

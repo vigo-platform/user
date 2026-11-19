@@ -29,7 +29,7 @@ public class CoachApplication {
  @Column(nullable=false,length=8) private String locale="fa";
  @Enumerated(EnumType.STRING) @Column(nullable=false,length=16) private CoachApplicationStatus status=CoachApplicationStatus.PENDING;
  @Column(name="rejection_reason",length=500) private String rejectionReason;
- @Column(name="reviewed_by") private UUID reviewedBy;
+ @Column(name="reviewed_by") private Long reviewedBy;
  @Column(name="reviewed_at") private Instant reviewedAt;
  @Column(name="created_at",nullable=false) private Instant createdAt=Instant.now();
  @Column(name="updated_at",nullable=false) private Instant updatedAt=createdAt;

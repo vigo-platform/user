@@ -26,7 +26,7 @@ class CredentialServiceTest {
   }
   assertThatIllegalArgumentException().isThrownBy(()->Identifiers.phone("09121234567"));
  }
- @Test void createAssignsDefaultsPreservesHashAndPublishesPublicId(){
+ @Test void createAssignsDefaultsPreservesHashAndPublishesNumericId(){
   when(users.saveAndFlush(any())).thenAnswer(i->{UserAccount u=i.getArgument(0);u.setId(4L);return u;});
   String encoded="{argon2}$synthetic$encoded-hash";
   var response=service.create(CreateUserRequest.newBuilder().setEmail(" A@example.COM ").setFirstName("A").setLastName("B").setPasswordHash(encoded).build());
@@ -36,8 +36,8 @@ class CredentialServiceTest {
   assertThat(response.getTwoFactorEnabled()).isFalse();
   ArgumentCaptor<UserAccount> capture=ArgumentCaptor.forClass(UserAccount.class);verify(users).saveAndFlush(capture.capture());
   assertThat(capture.getValue().passwordHash()).isEqualTo(encoded);assertThat(capture.getValue().toString()).doesNotContain(encoded);
-  assertThat(capture.getValue().getPublicId()).isNotNull();
-  verify(events).emit(eq(capture.getValue()),eq("UserRegistered"),argThat(data->capture.getValue().getPublicId().equals(data.get("user_id"))));
+  assertThat(capture.getValue().getId()).isEqualTo(4L);
+  verify(events).emit(eq(capture.getValue()),eq("UserRegistered"),argThat(data->capture.getValue().getId().equals(data.get("user_id"))));
  }
  @Test void phoneOnlySignupDoesNotInventVerifiedEmailOrPhone(){
   when(users.saveAndFlush(any())).thenAnswer(i->{UserAccount u=i.getArgument(0);u.setId(8L);return u;});

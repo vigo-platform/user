@@ -12,7 +12,6 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
-import java.util.UUID;
 
 /**
  * Coach-owned plan management. Every mutation derives the coach identity from the
@@ -25,7 +24,7 @@ public class CoachPlanController {
     private final CoachPlanService service;
 
 
-    private static UUID id(Authentication a) { return UUID.fromString(a.getName()); }
+    private static long id(Authentication a) { return Long.parseLong(a.getName()); }
 
     @PreAuthorize("hasRole('COACH')")
     @GetMapping

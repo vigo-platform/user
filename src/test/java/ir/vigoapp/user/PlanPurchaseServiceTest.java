@@ -52,9 +52,8 @@ class PlanPurchaseServiceTest {
     PlanPurchaseService purchases;
     OrderClient orders;
 
-    UUID coachId = UUID.randomUUID();
-    UUID athleteId = UUID.randomUUID();
-    Long athleteUserId;
+    long coachId;
+    long athleteId;
 
     @BeforeAll
     static void start() throws Exception {
@@ -91,22 +90,22 @@ class PlanPurchaseServiceTest {
         inTx(() -> {
             seedCoach();
             var athlete = new UserAccount();
-            athlete.setPublicId(athleteId);
             athlete.setEmail("athlete@example.test");
             athlete.setDisplayName("Athlete");
             athlete.replacePassword("hash");
             em.persist(athlete);
             em.flush();
-            athleteUserId = athlete.getId();
+            athleteId = athlete.getId();
             return null;
         });
     }
 
     private void seedCoach() {
         var u = new UserAccount();
-        u.setPublicId(coachId); u.setEmail("coach@example.test"); u.setDisplayName("Coach");
+        u.setEmail("coach@example.test"); u.setDisplayName("Coach");
         u.replacePassword("hash"); u.setRole(Role.COACH); u.setEmailVerified(true);
         em.persist(u); em.flush();
+        coachId = u.getId();
         var c = new CoachProfile();
         c.setUser(u); c.setDisplayName("Coach"); c.setBio("Synthetic coach biography");
         c.setSpecialties("[]"); c.setStatus(CoachStatus.APPROVED);
@@ -124,7 +123,7 @@ class PlanPurchaseServiceTest {
         Map<String, Object> created = inTx(() -> planService.create(coachId,
                 new Requests.Plan("Monthly", "Plan description", 500_000L, 30,
                         List.of("WORKOUT", "NUTRITION"), List.of(), fields)));
-        return (Long) created.get("plan_id");
+        return (Long) created.get("planId");
     }
 
     private int subs() {
@@ -144,7 +143,7 @@ class PlanPurchaseServiceTest {
         assertThat(result).containsEntry("amount_due", null);
         var row = new JdbcTemplate(dataSource).queryForMap("select status, athlete_id, coach_id from plan_subscriptions");
         assertThat(row.get("status")).isEqualTo("PENDING_PAYMENT");
-        assertThat(row.get("athlete_id")).isEqualTo(athleteUserId);
+        assertThat(row.get("athlete_id")).isEqualTo(athleteId);
     }
 
     @Test
