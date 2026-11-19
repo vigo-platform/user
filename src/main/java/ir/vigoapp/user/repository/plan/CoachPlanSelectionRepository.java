@@ -23,20 +23,6 @@ public class CoachPlanSelectionRepository {
     private final JdbcClient jdbc;
     private final ObjectMapper json;
 
-    public List<Long> findFeatureIds(long planId) {
-        return jdbc.sql("""
-                SELECT feature_id FROM coach_plan_features WHERE plan_id = :planId ORDER BY feature_id
-                """).param("planId", planId).query(Long.class).list();
-    }
-
-    public List<PlanFieldValue> findFieldValues(long planId) {
-        return jdbc.sql("""
-                SELECT field_id, value FROM coach_plan_field_values WHERE plan_id = :planId ORDER BY field_id
-                """).param("planId", planId)
-                .query((row, index) -> new PlanFieldValue(row.getLong("field_id"), json.readTree(row.getString("value"))))
-                .list();
-    }
-
     public Map<Long, List<Label>> findPreviewFeatures(long coachId, boolean publicOnly) {
         return jdbc.sql("""
                 SELECT plan.id AS plan_id, feature.id, feature.code, feature.title
@@ -116,9 +102,38 @@ public class CoachPlanSelectionRepository {
     }
 
     public void clear(long planId) {
+        clearIncludes(planId);
+        clearFieldValues(planId);
+        clearFeatures(planId);
+    }
+
+    public void clearIncludes(long planId) {
         jdbc.sql("DELETE FROM coach_plan_includes WHERE plan_id = :planId").param("planId", planId).update();
+    }
+
+    private void clearFieldValues(long planId) {
         jdbc.sql("DELETE FROM coach_plan_field_values WHERE plan_id = :planId").param("planId", planId).update();
+    }
+
+    public void clearFieldValues(long planId, List<Long> fieldIds) {
+        if (fieldIds.isEmpty()) return;
+        jdbc.sql("DELETE FROM coach_plan_field_values WHERE plan_id = :planId AND field_id = ANY(:ids)")
+                .param("planId", planId).param("ids", new SqlArrayValue("bigint", fieldIds.toArray())).update();
+    }
+
+    private void clearFeatures(long planId) {
         jdbc.sql("DELETE FROM coach_plan_features WHERE plan_id = :planId").param("planId", planId).update();
+    }
+
+    public void removeFeatures(long planId, List<Long> featureIds) {
+        if (featureIds.isEmpty()) return;
+        var ids = featureIds.toArray();
+        jdbc.sql("""
+                DELETE FROM coach_plan_field_values answer USING plan_field_definitions field
+                WHERE answer.plan_id = :planId AND answer.field_id = field.id AND field.feature_id = ANY(:ids)
+                """).param("planId", planId).param("ids", new SqlArrayValue("bigint", ids)).update();
+        jdbc.sql("DELETE FROM coach_plan_features WHERE plan_id = :planId AND feature_id = ANY(:ids)")
+                .param("planId", planId).param("ids", new SqlArrayValue("bigint", ids)).update();
     }
 
     public void insert(long planId, List<Long> includeIds, List<Long> featureIds, List<PlanFieldValue> fieldValues) {
@@ -127,7 +142,10 @@ public class CoachPlanSelectionRepository {
                     .param("planId", planId).param("ids", new SqlArrayValue("bigint", includeIds.toArray())).update();
         }
         if (!featureIds.isEmpty()) {
-            jdbc.sql("INSERT INTO coach_plan_features (plan_id, feature_id) SELECT :planId, unnest(:ids)")
+            jdbc.sql("""
+                    INSERT INTO coach_plan_features (plan_id, feature_id) SELECT :planId, unnest(:ids)
+                    ON CONFLICT (plan_id, feature_id) DO NOTHING
+                    """)
                     .param("planId", planId).param("ids", new SqlArrayValue("bigint", featureIds.toArray())).update();
         }
         if (!fieldValues.isEmpty()) {

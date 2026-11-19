@@ -324,7 +324,8 @@ Auth must use contract 3.1.0 numeric subjects, production mTLS, and user status/
 | GET/POST /api/v1/coaches/me/plans | COACH; create requires an approved coach |
 | GET /api/v1/coaches/me/plan/form-options | COACH, returns active `includeOptions`, full `generalFields`, and `features` with only `id`, `code`, and `label` |
 | GET /api/v1/coaches/me/plan/form-options/features/{id} | COACH, returns the active feature and all its active field definitions in `fields` |
-| PUT /api/v1/coaches/me/plans/{plan_id} | owner COACH only |
+| PATCH /api/v1/coaches/me/plans/{plan_id} | Owner COACH, partial update |
+| PUT /api/v1/coaches/me/plans/{plan_id} | Owner COACH, full submission |
 | DELETE /api/v1/coaches/me/plans/{plan_id} | Owner COACH, archives the plan |
 | POST /api/v1/coaches/me/plans/{plan_id}/unarchive | Owner COACH, restores the plan |
 
@@ -351,12 +352,11 @@ coach, including inactive and archived plans. The detail also includes `status`,
 `created_at` and `updated_at`. A missing plan or one owned by another coach
 returns `404 NOT_FOUND`.
 
-Ownership always comes from the token: a plan mutation addressed at another
-coach's plan returns 403, and an unknown plan returns 404. Plan writes accept
-`includes` as a list of codes from `plan_include_catalog`. The initial catalog
-contains `WORKOUT`, `NUTRITION`, `SUPPLEMENT`, and `CHAT_SUPPORT`. Existing include
-selections remain readable when an option is deactivated. Unarchive archived
-plans before editing (`409 PLAN_ARCHIVED`).
+The authenticated coach can edit only their own active, unarchived plans. Both
+PATCH and PUT return 403 for another coach's plan, 404 for an unknown plan,
+`409 PLAN_ARCHIVED` for an archived plan, and `409 PLAN_INACTIVE` for an
+inactive plan. The catalog of services includes `WORKOUT`, `NUTRITION`,
+`SUPPLEMENT`, and `CHAT_SUPPORT`.
 
 The coach completes the form locally and submits one `POST /api/v1/coaches/me/plans`.
 A successful transaction returns HTTP 201 with `data.planId`, `status` equal to
@@ -372,20 +372,69 @@ The coach can archive and restore their own plan.
 | `fieldValues` | One answer per field ID, covering all active required general fields |
 | `summary`, `description` | Optional text up to 180 and 1,500 characters respectively |
 | `firstDeliveryDays` | Optional nonnegative integer. Zero represents same-day delivery. |
-| `compareAtPrice` | Optional integer in the plan's currency, strictly greater than `price` |
 
-The server assigns the currency and the initial status. Sending `currency`,
-`coachId` or `isActive` in the body produces an `UNKNOWN_FIELD` issue. Older plans
-retain their stored currency on edit. On PUT, omitting `summary`, `firstDeliveryDays`
-or `compareAtPrice` preserves its stored value. Send an explicit JSON null to clear it.
+On POST, the server assigns the currency, initial status and `compareAtPrice`.
+The initial `compareAtPrice` equals `price`. Sending `compareAtPrice` in the POST
+body produces an `UNKNOWN_FIELD` issue. On POST and PUT, sending `currency`,
+`coachId` or `isActive` also produces `UNKNOWN_FIELD`. Older plans retain their
+stored currency on edit. On PUT, omitting `summary` or `firstDeliveryDays`
+preserves its stored value. Send an explicit JSON null to clear either field.
 
-On create and update, `fieldValues` contains entries with `fieldId` and `value`.
-Supply all active `generalFields`, including `PLAN_LEVEL`. The form-options
+PUT and PATCH both accept `compareAtPrice`. When `price` is supplied by itself,
+both prices take that value. When both are supplied, each takes its submitted
+value. A PATCH with only `compareAtPrice` changes just the comparison price.
+The comparison price can be equal to or higher than `price`. An explicit JSON
+null clears it.
+
+On POST and PUT, `fieldValues` contains entries with `fieldId` and `value`.
+Supply all active required general fields, including `PLAN_LEVEL`. The form-options
 response includes `id`, `code`, `label`, `type`, `helpText`, `valueType`, `required`,
 and `validationRules` for each field in `generalFields`. Send level selections
 as an array of option codes, for example `["BEGINNER", "INTERMEDIATE"]`.
 The optional `featureIds` list selects features. Load their optional fields
 from `form-options/features/{id}` and submit them only for selected features.
+
+Management responses for listing, creating, and editing plans include
+`features` with `id`, `code`, and `label`, alongside `featureIds`. Each entry in
+`fieldValues` includes `fieldId`, `code`, `label`, and `value`. `featureId`
+identifies the owning feature and is null for general fields. For select fields,
+`selectedOptions` contains the stored option codes with their display labels.
+
+#### Partial edits with PATCH
+
+Send `PATCH /api/v1/coaches/me/plans/{planId}` with any subset of the editable
+properties. For example, `{"price":130000}` sets both prices to 130000. When
+both price fields are omitted, the stored prices are preserved. An empty object
+returns the current plan. Send JSON null to clear `summary`, `description`, or
+`firstDeliveryDays`. Supplied values for `title`, `price`, and `durationDays` must
+be non-null. The plan ID belongs in the URL.
+
+Example with illustrative IDs from the form options and feature details
+
+```json
+{
+  "summary": null,
+  "includes": [{"code": "WORKOUT"}],
+  "fields": [{"fieldId": 12, "value": 4}],
+  "features": [
+    {"featureId": 3, "fields": [{"fieldId": 18, "value": 14}]},
+    {"featureId": 5, "fields": null}
+  ]
+}
+```
+
+- A supplied `includes` array replaces the selected services. Keep at least one
+  service.
+- Root `fields` updates only the general answers listed by `fieldId`. Supply a
+  non-null `value` for every entry.
+- Each entry in `features` targets one feature. Supply its ID and a `fields`
+  array with non-null values to add or edit it. Sending `"fields":null` on the
+  feature removes it and all its answers.
+  Omitted features and answers keep their saved values. An empty `features`
+  array applies zero feature changes.
+- The server validates the entire patch before applying it. A failed edit
+  leaves the plan and its selections intact. A successful edit returns the
+  complete plan with `includes`, `featureIds`, `features`, and `fieldValues`.
 
 An `INTEGER` answer must be a JSON integer within the catalog's bounds. A
 `SINGLE_SELECT` answer is an option code. A `MULTI_SELECT` answer is a nonempty
@@ -402,15 +451,17 @@ and the missing catalog field ID. The front end can map these codes to localized
 | Issue codes | Meaning |
 |---|---|
 | `INVALID_REQUEST_BODY`, `UNKNOWN_FIELD` | Unreadable body or unexpected property |
+| `READ_ONLY_FIELD` | PATCH attempted to set a server-managed property such as `planId`, `isActive`, or `currency` |
 | `REQUIRED_FIELD_MISSING`, `INVALID_VALUE_TYPE`, `EMPTY_SELECTION` | Missing answer, wrong JSON type or empty required selection |
 | `INVALID_ID`, `INVALID_CODE` | Invalid ID or service code format |
 | `UNKNOWN_ID`, `UNKNOWN_CODE`, `INACTIVE_ITEM` | Catalog item missing or inactive |
 | `DUPLICATE_ID`, `DUPLICATE_CODE` | Repeated field, feature or service |
 | `FEATURE_NOT_SELECTED` | Answer belongs to a feature the coach did not select |
+| `FIELD_SCOPE_MISMATCH` | PATCH placed a field outside its owning feature or a general field inside a feature |
 | `OPTION_NOT_ALLOWED`, `DUPLICATE_OPTION` | Invalid or repeated option within an answer |
 | `INTEGER_TOO_SMALL`, `INTEGER_TOO_LARGE` | Integer outside `params.min` or `params.max` |
 | `TEXT_TOO_SHORT`, `TEXT_TOO_LONG`, `INVALID_TEXT` | Text outside the length bounds or containing a null character |
-| `COMPARE_AT_PRICE_NOT_GREATER_THAN_PRICE` | Comparison price must exceed the selling price |
+| `COMPARE_AT_PRICE_NOT_GREATER_THAN_PRICE` | Submitted comparison price is below the selling price |
 
 Example entries in `data` using illustrative field IDs
 
@@ -422,8 +473,8 @@ Example entries in `data` using illustrative field IDs
 ```
 
 V10 moves existing level selections into `coach_plan_field_values` and removes
-`coach_plan_levels`. When editing a legacy plan, supply any required fields that
-have no saved value.
+`coach_plan_levels`. A full PUT on a legacy plan requires values for all
+currently required general fields.
 
 Plan endpoints use numeric identifiers. `planId` is the plan's ID and
 `coachId` is the coach's numeric user ID.

@@ -1,4 +1,5 @@
 package ir.vigoapp.user.api;
+import ir.vigoapp.user.api.plan.CoachPlanManagementController;
 import ir.vigoapp.user.dto.Envelope;
 import ir.vigoapp.user.dto.FieldIssue;
 import org.springframework.web.bind.annotation.*;
@@ -6,6 +7,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.http.*;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.method.annotation.*;
+import org.springframework.web.method.HandlerMethod;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 import org.springframework.web.servlet.HandlerMapping;
 import jakarta.servlet.http.HttpServletRequest;
@@ -32,7 +34,11 @@ public class Errors {
   return ResponseEntity.badRequest().body(Envelope.error("VALIDATION_FAILED","Validation failed","اعتبارسنجی ناموفق بود",issues));
  }
  @ExceptionHandler({HttpMessageNotReadableException.class,MethodArgumentTypeMismatchException.class,HandlerMethodValidationException.class,ConstraintViolationException.class,IllegalArgumentException.class,org.springframework.web.bind.MissingServletRequestParameterException.class})
- ResponseEntity<?> bad(Exception e) { return ResponseEntity.badRequest().body(Envelope.error("VALIDATION_FAILED","Invalid request","درخواست نامعتبر است",null)); }
+ ResponseEntity<?> bad(Exception e,HttpServletRequest request) {
+  if(e instanceof MethodArgumentTypeMismatchException || e instanceof HandlerMethodValidationException || e instanceof ConstraintViolationException)
+   logPlanInputRejection(request,"INVALID_REQUEST_ARGUMENT");
+  return ResponseEntity.badRequest().body(Envelope.error("VALIDATION_FAILED","Invalid request","درخواست نامعتبر است",null));
+ }
  @ExceptionHandler(DataIntegrityViolationException.class) ResponseEntity<?> conflict(HttpServletRequest request) {
   log.atWarn().addKeyValue("event","user_request_conflict").addKeyValue("result","FAILURE")
    .addKeyValue("status",409).addKeyValue("error_code","INVALID_STATE").addKeyValue("http_method",request.getMethod())
@@ -52,5 +58,34 @@ public class Errors {
   if(caller!=null)event.addKeyValue("actor_user_id",caller.getName());
   event.log("User API request could not be completed.");
   return ResponseEntity.internalServerError().body(Envelope.error("INTERNAL_SERVER_ERROR","Internal server error","خطای داخلی سرور",null));
+ }
+
+ /** Record plan requests rejected by MVC before the controller can log the write. */
+ public static void logPlanInputRejection(HttpServletRequest request, String reason) {
+  if (!(request.getAttribute(HandlerMapping.BEST_MATCHING_HANDLER_ATTRIBUTE) instanceof HandlerMethod handler)) return;
+  if (!CoachPlanManagementController.class.isAssignableFrom(handler.getBeanType()) || handler.hasMethodAnnotation(GetMapping.class)) return;
+
+  var event = log.atWarn().addKeyValue("event", "coach_plan_write_completed")
+   .addKeyValue("operation", handler.getMethod().getName())
+   .addKeyValue("result", "REJECTED").addKeyValue("stage", "request_binding")
+   .addKeyValue("error_code", "VALIDATION_FAILED").addKeyValue("status", 400).addKeyValue("reason", reason)
+   .addKeyValue("http_method", request.getMethod())
+   .addKeyValue("path", request.getAttribute(HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE));
+  var principal = request.getUserPrincipal();
+  if (principal != null) {
+   Long actorId = numericId(principal.getName());
+   if (actorId != null) event.addKeyValue("actor_user_id", actorId).addKeyValue("coach_id", actorId);
+  }
+  if (request.getAttribute(HandlerMapping.URI_TEMPLATE_VARIABLES_ATTRIBUTE) instanceof Map<?, ?> variables) {
+   Long planId = numericId(variables.get("plan_id"));
+   if (planId != null) event.addKeyValue("plan_id", planId);
+  }
+  event.log("Coach plan request could not be read.");
+ }
+
+ private static Long numericId(Object value) {
+  if (!(value instanceof String text)) return null;
+  try { return Long.valueOf(text); }
+  catch (NumberFormatException ignored) { return null; }
  }
 }

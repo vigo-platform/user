@@ -70,17 +70,18 @@ public class PlanCatalogRepository {
 
     public record FieldDefinition(Field field, Long featureId, boolean active) {}
 
-    public List<FieldDefinition> findSubmissionFields(Collection<Long> ids) {
+    public List<FieldDefinition> findSubmissionFields(Collection<Long> ids, boolean includeRequired) {
+        if (ids.isEmpty() && !includeRequired) return List.of();
         return jdbc.sql("""
                 SELECT field.id, field.feature_id, field.code, field.label, field.help_text,
                        field.value_type, field.is_required, field.validation_rules,
                        (field.is_active AND (field.feature_id IS NULL OR feature.is_active)) AS active
                 FROM plan_field_definitions field
                 LEFT JOIN plan_feature_catalog feature ON feature.id = field.feature_id
-                WHERE (field.feature_id IS NULL AND field.is_active AND field.is_required)
+                WHERE (:includeRequired AND field.feature_id IS NULL AND field.is_active AND field.is_required)
                    OR field.id = ANY(:ids)
                 ORDER BY field.display_order, field.id
-                """).param("ids", new SqlArrayValue("bigint", ids.toArray()))
+                """).param("includeRequired", includeRequired).param("ids", new SqlArrayValue("bigint", ids.toArray()))
                 .query((row, index) -> new FieldDefinition(readField(row), row.getObject("feature_id", Long.class),
                         row.getBoolean("active")))
                 .list();

@@ -87,6 +87,19 @@ class JwtSecurityTest {
   verify(plans).create(ID, request);
   verify(plans).update(ID, 1L, request);
  }
+ @Test void onlyCoachesCanPatchPlans() throws Exception {
+  String path = "/api/v1/coaches/me/plans/1";
+  String body = "{\"price\":120000}";
+  mvc.perform(patch(path).contentType("application/json").content(body))
+    .andExpect(status().isUnauthorized());
+  mvc.perform(patch(path).header("Authorization", "Bearer " + good("ATHLETE"))
+    .contentType("application/json").content(body)).andExpect(status().isForbidden());
+  verifyNoInteractions(plans);
+  users.findById(ID).orElseThrow().setRole(Role.COACH);
+  mvc.perform(patch(path).header("Authorization", "Bearer " + good("COACH"))
+    .contentType("application/json").content(body)).andExpect(status().isOk());
+  verify(plans).patch(ID, 1L, JsonMapper.builder().build().readTree(body));
+ }
  @Test void onlyCoachesCanArchiveOrRestorePlansAndAdminStatusRouteIsDenied() throws Exception {
   String coachPath = "/api/v1/coaches/me/plans/1";
 
