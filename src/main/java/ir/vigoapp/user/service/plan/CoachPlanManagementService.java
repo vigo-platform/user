@@ -33,7 +33,7 @@ import java.util.Set;
  *
  * <p>Ownership is always taken from the authenticated actor, never from the
  * request body, so a coach cannot create or edit a plan that belongs to someone
- * else. Activation is managed through the admin API.
+ * else.
  */
 @Service
 @Transactional
@@ -89,14 +89,6 @@ public class CoachPlanManagementService {
         var plan = lockOwnedPlan(coachId, planId);
         if (!plan.isArchived()) throw ApiException.conflict("INVALID_STATE");
         plan.setArchived(false);
-        plan.setUpdatedAt(Instant.now());
-        plans.flush();
-    }
-
-    public void setActive(Long planId, boolean active) {
-        var plan = plans.lock(planId).orElseThrow(ApiException::notFound);
-        if (plan.isActive() == active) return;
-        plan.setActive(active);
         plan.setUpdatedAt(Instant.now());
         plans.flush();
     }

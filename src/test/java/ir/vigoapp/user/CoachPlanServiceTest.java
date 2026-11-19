@@ -467,7 +467,7 @@ class CoachPlanServiceTest {
     }
 
     private void setActive(Long planId, boolean active) {
-        tx.executeWithoutResult(status -> service.setActive(planId, active));
+        new JdbcTemplate(dataSource).update("UPDATE coach_plans SET is_active = ? WHERE id = ?", active, planId);
     }
 
     @Test

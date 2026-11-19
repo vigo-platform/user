@@ -32,7 +32,7 @@ import tools.jackson.databind.json.JsonMapper;
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
-@WebMvcTest(controllers={UserController.class, CoachPlanManagementController.class, AdminCoachPlanController.class, ir.vigoapp.user.api.plan.CoachPlanController.class, PublicCoachPlanController.class},properties={"app.jwt.jwks-uri=https://auth.example.test/jwks","app.jwt.issuer=https://auth.example.test","app.jwt.audience=vigo-api"})
+@WebMvcTest(controllers={UserController.class, CoachPlanManagementController.class, ir.vigoapp.user.api.plan.CoachPlanController.class, PublicCoachPlanController.class},properties={"app.jwt.jwks-uri=https://auth.example.test/jwks","app.jwt.issuer=https://auth.example.test","app.jwt.audience=vigo-api"})
 @Import({SecurityConfig.class,JwtSecurityTest.Keys.class})
 class JwtSecurityTest {
  static final String ISSUER="https://auth.example.test";static final long ID=1L;
@@ -87,35 +87,24 @@ class JwtSecurityTest {
   verify(plans).create(ID, request);
   verify(plans).update(ID, 1L, request);
  }
- @Test void adminsSetActivationAndOnlyCoachesCanArchiveOrRestore() throws Exception {
-  String adminPath = "/api/v1/admin/plans/1/status";
+ @Test void onlyCoachesCanArchiveOrRestorePlansAndAdminStatusRouteIsDenied() throws Exception {
   String coachPath = "/api/v1/coaches/me/plans/1";
-  mvc.perform(patch(adminPath)).andExpect(status().isUnauthorized());
 
   var account = users.findById(ID).orElseThrow();
   account.setRole(Role.COACH);
   String coach = "Bearer " + good("COACH");
-  mvc.perform(patch(adminPath).header("Authorization", coach).contentType("application/json")
-    .content("{\"isActive\":true}")).andExpect(status().isForbidden());
-  verifyNoInteractions(plans);
   mvc.perform(delete(coachPath).header("Authorization", coach)).andExpect(status().isOk());
   mvc.perform(post(coachPath + "/unarchive").header("Authorization", coach)).andExpect(status().isOk());
-  mvc.perform(post(coachPath + "/activate").header("Authorization", coach)).andExpect(status().isOk());
+  mvc.perform(post(coachPath + "/activate").header("Authorization", coach)).andExpect(status().isForbidden());
   verify(plans).archive(ID, 1L);
-  verify(plans, times(2)).unarchive(ID, 1L);
+  verify(plans).unarchive(ID, 1L);
 
   account.setRole(Role.ADMIN);
   String admin = "Bearer " + good("ADMIN");
   mvc.perform(delete(coachPath).header("Authorization", admin)).andExpect(status().isForbidden());
   mvc.perform(post(coachPath + "/unarchive").header("Authorization", admin)).andExpect(status().isForbidden());
-  mvc.perform(patch(adminPath).header("Authorization", admin).contentType("application/json")
-    .content("{}")).andExpect(status().isBadRequest());
-  mvc.perform(patch(adminPath).header("Authorization", admin).contentType("application/json")
-    .content("{\"isActive\":true}")).andExpect(status().isOk());
-  mvc.perform(patch(adminPath).header("Authorization", admin).contentType("application/json")
-    .content("{\"isActive\":false}")).andExpect(status().isOk());
-  verify(plans).setActive(1L, true);
-  verify(plans).setActive(1L, false);
+  mvc.perform(patch("/api/v1/admin/plans/1/status").header("Authorization", admin).contentType("application/json")
+    .content("{\"isActive\":false}")).andExpect(status().isForbidden());
   verifyNoMoreInteractions(plans);
  }
  static KeyPair key(){try{var generator=KeyPairGenerator.getInstance("RSA");generator.initialize(2048);return generator.generateKeyPair();}catch(Exception e){throw new IllegalStateException(e);}}

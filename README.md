@@ -326,8 +326,7 @@ Auth must use contract 3.1.0 numeric subjects, production mTLS, and user status/
 | GET /api/v1/coaches/me/plan/form-options/features/{id} | COACH, returns the active feature and all its active field definitions in `fields` |
 | PUT /api/v1/coaches/me/plans/{plan_id} | owner COACH only |
 | DELETE /api/v1/coaches/me/plans/{plan_id} | Owner COACH, archives the plan |
-| POST /api/v1/coaches/me/plans/{plan_id}/unarchive | Owner COACH, restores the plan. `/activate` is a legacy alias |
-| PATCH /api/v1/admin/plans/{plan_id}/status | ADMIN, sets `isActive` with `{"isActive": true}` or `{"isActive": false}` |
+| POST /api/v1/coaches/me/plans/{plan_id}/unarchive | Owner COACH, restores the plan |
 
 The public routes require an approved coach with an active COACH account.
 A plan appears when `is_active = true` and `is_archived = false`. The profile
@@ -362,7 +361,7 @@ plans before editing (`409 PLAN_ARCHIVED`).
 The coach completes the form locally and submits one `POST /api/v1/coaches/me/plans`.
 A successful transaction returns HTTP 201 with `data.planId`, `status` equal to
 `ACTIVE`, `isActive` equal to true and `isArchived` equal to false.
-An administrator can subsequently deactivate the plan. A coach can archive it.
+The coach can archive and restore their own plan.
 
 | Request property | Rule |
 |---|---|

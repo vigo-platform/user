@@ -47,7 +47,6 @@ public final class Requests {
   @Size(max=1000) String description,
   @Min(0) @Max(720) Integer durationMonths) {}
  public enum CertificateCategory { UNIVERSITY, FEDERATION, SKILL }
- public record PlanActivation(@NotNull Boolean isActive) {}
  public record Status(@NotNull AccountStatus status,@Size(max=500) String reason) {}
  public record Rejection(@NotBlank @Size(min=5,max=500) String reason) {}
 }

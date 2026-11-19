@@ -61,7 +61,7 @@ public class CoachPlanManagementController {
         return Envelope.ok(null);
     }
 
-    @PostMapping({"/{plan_id}/unarchive", "/{plan_id}/activate"})
+    @PostMapping("/{plan_id}/unarchive")
     public Envelope<?> unarchive(Authentication a, @PathVariable Long plan_id) {
         service.unarchive(id(a), plan_id);
         return Envelope.ok(null);
