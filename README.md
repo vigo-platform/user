@@ -316,7 +316,7 @@ Auth must use contract 3.1.0 numeric subjects, production mTLS, and user status/
 | Route | Access |
 |---|---|
 | GET/POST /api/v1/coaches/me/plans | COACH; create requires an approved coach |
-| GET /api/v1/coaches/me/plan/form-options | COACH, returns active `includeOptions`, full `generalFields`, and `features` with their full `fields` |
+| GET /api/v1/coaches/me/plan/form-options | COACH, returns active `includeOptions`, full `generalFields`, and `features` with only `id`, `code`, and `label` |
 | GET /api/v1/coaches/me/plan/form-options/features/{id} | COACH, returns the active feature and all its active field definitions in `fields` |
 | PUT /api/v1/coaches/me/plans/{plan_id} | owner COACH only |
 | DELETE /api/v1/coaches/me/plans/{plan_id} | owner; archives (soft delete) |
@@ -332,11 +332,10 @@ plans before editing (`409 PLAN_ARCHIVED`).
 On create and update, `fieldValues` contains entries with `fieldId` and `value`.
 Supply all active `generalFields`, including `PLAN_LEVEL`. The form-options
 response includes `id`, `code`, `label`, `type`, `helpText`, `valueType`, `required`,
-and `validationRules` for each field in `generalFields` and `features[].fields`.
-Send level selections as an array of option codes, for example
-`["BEGINNER", "INTERMEDIATE"]`. The optional
-`featureIds` list selects features. Their fields are optional and can only be
-submitted when their feature is selected.
+and `validationRules` for each field in `generalFields`. Send level selections
+as an array of option codes, for example `["BEGINNER", "INTERMEDIATE"]`.
+The optional `featureIds` list selects features. Load their optional fields
+from `form-options/features/{id}` and submit them only for selected features.
 
 V10 moves existing level selections into `coach_plan_field_values` and removes
 `coach_plan_levels`. When editing a legacy plan, supply any required fields that

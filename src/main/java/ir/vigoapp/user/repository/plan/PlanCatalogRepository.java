@@ -39,6 +39,15 @@ public class PlanCatalogRepository {
                 """).query(Item.class).list();
     }
 
+    public List<Field> findGeneralFields() {
+        return jdbc.sql("""
+                SELECT id, code, label, help_text, value_type, is_required, validation_rules
+                FROM plan_field_definitions
+                WHERE is_active AND feature_id IS NULL
+                ORDER BY display_order, id
+                """).query((row, index) -> readField(row)).list();
+    }
+
     public record FieldDefinition(Field field, Long featureId) {}
 
     public List<FieldDefinition> findActiveFieldDefinitions() {

@@ -143,8 +143,7 @@ class CoachPlanServiceTest {
     void featureFieldsAreOptionalAndBelongToSelectedFeatures() {
         var feature = formOptions().features().stream().filter(option -> option.code().equals("PERIODIC_PLAN_REVIEW"))
                 .findFirst().orElseThrow();
-        assertThat(feature.fields()).containsExactlyElementsOf(catalog.findFeatureDetails(feature.id()).orElseThrow().fields());
-        var field = feature.fields().getFirst();
+        var field = catalog.findFeatureDetails(feature.id()).orElseThrow().fields().getFirst();
         assertThat(field.required()).isFalse();
         var required = requiredPlanFields();
         var request = new Requests.Plan("Workout", null, 100000L, 30, List.of("WORKOUT"), List.of(feature.id()), required);

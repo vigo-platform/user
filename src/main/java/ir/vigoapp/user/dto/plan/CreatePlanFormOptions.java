@@ -9,9 +9,7 @@ import java.util.List;
 public record CreatePlanFormOptions(
         List<Item> includeOptions,
         List<Field> generalFields,
-        List<FeatureOption> features
+        List<Item> features
 ) {
     public record Item(long id, String code, String label) {}
-
-    public record FeatureOption(long id, String code, String label, List<Field> fields) {}
 }

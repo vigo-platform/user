@@ -6,7 +6,6 @@ import ir.vigoapp.user.dto.plan.PlanOptionDetails.Field;
 import ir.vigoapp.user.entity.plan.catalog.PlanFieldDefinition.ValueType;
 import ir.vigoapp.user.repository.UserRepository;
 import ir.vigoapp.user.repository.plan.PlanCatalogRepository;
-import ir.vigoapp.user.repository.plan.PlanCatalogRepository.FieldDefinition;
 import ir.vigoapp.user.security.SecurityConfig;
 import ir.vigoapp.user.service.plan.CoachPlanService;
 import org.junit.jupiter.api.Test;
@@ -18,8 +17,10 @@ import org.springframework.test.web.servlet.MockMvc;
 import tools.jackson.databind.ObjectMapper;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
+import static org.hamcrest.Matchers.equalTo;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -41,15 +42,12 @@ class PlanOptionDetailsTest {
     @MockitoBean UserRepository users;
 
     @Test
-    void exposesFullGeneralAndFeatureFieldDetailsInFormOptions() throws Exception {
+    void exposesFullGeneralFieldsAndOnlyFeatureSummariesInFormOptions() throws Exception {
         var level = new Field(12, "PLAN_LEVEL", "سطح برنامه", "سطح مناسب برنامه", ValueType.MULTI_SELECT, true,
                 json.readTree("""
                         {"options":[{"code":"BEGINNER","label":"مبتدی"}]}
                         """));
-        var review = new Field(1, "REVIEW_INTERVAL_DAYS", "فاصله بازبینی", "بر حسب روز",
-                ValueType.INTEGER, false, json.readTree("{\"min\":1,\"max\":90}"));
-        when(catalog.findActiveFieldDefinitions()).thenReturn(List.of(
-                new FieldDefinition(level, null), new FieldDefinition(review, 1L)));
+        when(catalog.findGeneralFields()).thenReturn(List.of(level));
         when(catalog.findFeatures()).thenReturn(List.of(new Item(1, "PERIODIC_PLAN_REVIEW", "بازبینی")));
         var coach = user("coach").roles("COACH");
 
@@ -65,11 +63,8 @@ class PlanOptionDetailsTest {
                 .andExpect(jsonPath("$.data.generalFields[0].type").value("FIELD"))
                 .andExpect(jsonPath("$.data.generalFields[0].valueType").value("MULTI_SELECT"))
                 .andExpect(jsonPath("$.data.generalFields[0].validationRules.options[0].code").value("BEGINNER"))
-                .andExpect(jsonPath("$.data.features[0].fields[0].code").value(review.code()))
-                .andExpect(jsonPath("$.data.features[0].fields[0].type").value("FIELD"))
-                .andExpect(jsonPath("$.data.features[0].fields[0].valueType").value("INTEGER"))
-                .andExpect(jsonPath("$.data.features[0].fields[0].required").value(false))
-                .andExpect(jsonPath("$.data.features[0].fields[0].validationRules.max").value(90));
+                .andExpect(jsonPath("$.data.features[0]").value(
+                        equalTo(Map.of("id", 1, "code", "PERIODIC_PLAN_REVIEW", "label", "بازبینی"))));
     }
 
     @Test
