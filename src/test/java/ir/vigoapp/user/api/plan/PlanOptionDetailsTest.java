@@ -8,6 +8,7 @@ import ir.vigoapp.user.repository.UserRepository;
 import ir.vigoapp.user.repository.plan.PlanCatalogRepository;
 import ir.vigoapp.user.security.SecurityConfig;
 import ir.vigoapp.user.service.plan.CoachPlanService;
+import ir.vigoapp.user.service.plan.OwnedCoachPlanService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
@@ -39,6 +40,7 @@ class PlanOptionDetailsTest {
     @Autowired MockMvc mvc;
     @Autowired ObjectMapper json;
     @MockitoBean PlanCatalogRepository catalog;
+    @MockitoBean OwnedCoachPlanService ownedPlans;
     @MockitoBean UserRepository users;
 
     @Test

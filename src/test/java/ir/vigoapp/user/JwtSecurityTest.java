@@ -9,6 +9,7 @@ import ir.vigoapp.user.entity.UserAccount;
 import ir.vigoapp.user.repository.UserRepository;
 import ir.vigoapp.user.security.SecurityConfig;
 import ir.vigoapp.user.service.ProfileService;
+import ir.vigoapp.user.service.plan.OwnedCoachPlanService;
 import ir.vigoapp.user.service.plan.PublicCoachPlanService;
 import org.junit.jupiter.api.*;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
@@ -39,24 +40,36 @@ class JwtSecurityTest {
  @Autowired MockMvc mvc;@MockitoBean ProfileService profiles;@MockitoBean UserRepository users;
  @MockitoBean ir.vigoapp.user.service.CoachPlanService plans;
  @MockitoBean ir.vigoapp.user.service.plan.CoachPlanService formOptions;
+ @MockitoBean OwnedCoachPlanService ownedPlans;
  @MockitoBean PublicCoachPlanService publicPlans;
 
  @Test void coachPlanReadsRequireCoachRole() throws Exception {
-  var paths = List.of("/api/v1/coaches/me/plans", "/api/v1/coaches/me/plan/form-options",
-    "/api/v1/coaches/me/plan/form-options/features/1");
+  var paths = List.of("/api/v1/coaches/me/plans", "/api/v1/coaches/me/plan", "/api/v1/coaches/me/plan/2",
+    "/api/v1/coaches/me/plan/form-options", "/api/v1/coaches/me/plan/form-options/features/1");
   String athleteToken = good("ATHLETE");
   for (String path : paths) {
    mvc.perform(get(path)).andExpect(status().isUnauthorized());
    mvc.perform(get(path).header("Authorization", "Bearer " + athleteToken))
      .andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value("FORBIDDEN"));
   }
-  verifyNoInteractions(plans, formOptions);
+  verifyNoInteractions(plans, formOptions, ownedPlans, publicPlans);
 
   users.findById(ID).orElseThrow().setRole(Role.COACH);
   String coachToken = good("COACH");
   for (String path : paths) {
-   mvc.perform(get(path).header("Authorization", "Bearer " + coachToken)).andExpect(status().isOk());
+   mvc.perform(get(path).header("Authorization", "Bearer " + coachToken).header("X-User-Id", "42"))
+    .andExpect(status().isOk());
   }
+  for (String planId : List.of("0", "-1", "invalid")) {
+   mvc.perform(get("/api/v1/coaches/me/plan/{plan_id}", planId).header("Authorization", "Bearer " + coachToken))
+    .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+  }
+  verify(ownedPlans).list(ID);
+  verify(ownedPlans).getDetail(ID, 2L);
+  verify(formOptions).getFormOptions();
+  verify(formOptions).getFeatureDetails(1L);
+  verifyNoMoreInteractions(ownedPlans, formOptions);
+  verifyNoInteractions(publicPlans);
  }
  @Test void planWritesAcceptLevelInFieldValuesWithNoFeatures() throws Exception {
   users.findById(ID).orElseThrow().setRole(Role.COACH);

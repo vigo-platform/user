@@ -64,6 +64,7 @@ public class SecurityConfig {
     // Coaches manage their own plans.
     .requestMatchers(GET,"/api/v1/coaches/me/plans","/api/v1/coaches/me/plan/form-options",
      "/api/v1/coaches/me/plan/form-options/features/{id}").authenticated()
+    .requestMatchers(GET,"/api/v1/coaches/me/plan","/api/v1/coaches/me/plan/{plan_id}").hasRole("COACH")
     .requestMatchers(POST,"/api/v1/coaches/me/plans").hasRole("COACH")
     .requestMatchers(PUT,"/api/v1/coaches/me/plans/{plan_id}").hasRole("COACH")
     .requestMatchers(DELETE,"/api/v1/coaches/me/plans/{plan_id}").hasRole("COACH")

@@ -6,6 +6,7 @@ import ir.vigoapp.user.dto.plan.PlanOptionDetails.Field;
 import ir.vigoapp.user.entity.plan.catalog.PlanFieldDefinition.ValueType;
 import ir.vigoapp.user.repository.plan.PlanCatalogRepository;
 import ir.vigoapp.user.service.plan.CoachPlanService;
+import ir.vigoapp.user.service.plan.OwnedCoachPlanService;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -29,7 +30,7 @@ class CoachPlanFormOptionsTest {
         when(catalog.findGeneralFields()).thenReturn(List.of(level));
         when(catalog.findFeatures()).thenReturn(features);
 
-        var controller = new CoachPlanController(new CoachPlanService(catalog));
+        var controller = new CoachPlanController(new CoachPlanService(catalog), mock(OwnedCoachPlanService.class));
         var response = controller.getFormOptions();
 
         assertThat(response.success()).isTrue();

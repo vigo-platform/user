@@ -44,7 +44,7 @@ public final class PublicCoachPlan {
 
     public record Option(String code, String label) {}
 
-    private static Long rialAmount(String currency, Long amount) {
+    static Long rialAmount(String currency, Long amount) {
         return "IRR".equals(currency) ? amount : null;
     }
 }

@@ -36,7 +36,7 @@ public class CoachPlanSelectionRepository {
                 .list();
     }
 
-    public Map<Long, List<Label>> findPreviewFeatures(long coachId) {
+    public Map<Long, List<Label>> findPreviewFeatures(long coachId, boolean publicOnly) {
         return jdbc.sql("""
                 SELECT plan.id AS plan_id, feature.id, feature.code, feature.title
                 FROM coach_plans plan
@@ -48,9 +48,10 @@ public class CoachPlanSelectionRepository {
                     ORDER BY catalog.display_order, catalog.id
                     LIMIT 3
                 ) feature ON TRUE
-                WHERE plan.coach_user_id = :coachId AND plan.is_active AND NOT plan.is_archived
+                WHERE plan.coach_user_id = :coachId
+                    AND (NOT :publicOnly OR (plan.is_active AND NOT plan.is_archived))
                 ORDER BY plan.id, feature.display_order, feature.id
-                """).param("coachId", coachId).query(rows -> {
+                """).param("coachId", coachId).param("publicOnly", publicOnly).query(rows -> {
             Map<Long, List<Label>> features = new HashMap<>();
             while (rows.next()) {
                 var label = new Label(rows.getLong("id"), rows.getString("code"), rows.getString("title"));

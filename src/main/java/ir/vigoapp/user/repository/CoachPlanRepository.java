@@ -13,7 +13,7 @@ public interface CoachPlanRepository extends JpaRepository<CoachPlan,Long> {
  Page<CoachPlan> findByCoachIdAndActiveTrueAndArchivedFalse(Long coachId,Pageable pageable);
  Page<CoachPlan> findByCoachIdInAndActiveTrueAndArchivedFalse(Collection<Long> coachIds,Pageable pageable);
 
- interface PublicPlanSummary {
+ interface PlanSummary {
   long getId();
   String getTitle();
   String getSummary();
@@ -25,7 +25,14 @@ public interface CoachPlanRepository extends JpaRepository<CoachPlan,Long> {
   int getDisplayOrder();
  }
 
- List<PublicPlanSummary> findByCoachIdAndActiveTrueAndArchivedFalseOrderByDisplayOrderAscIdAsc(Long coachId);
+ interface OwnedPlanSummary extends PlanSummary {
+  boolean isActive();
+  boolean isArchived();
+ }
+
+ List<PlanSummary> findByCoachIdAndActiveTrueAndArchivedFalseOrderByDisplayOrderAscIdAsc(Long coachId);
+ List<OwnedPlanSummary> findByCoachIdOrderByDisplayOrderAscIdAsc(long coachId);
+ Optional<CoachPlan> findByCoachIdAndId(long coachId, long planId);
 
  @Query("""
   select p from CoachPlan p join p.coach c join c.user u

@@ -1,0 +1,37 @@
+meta {
+  name: List my coach plans
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{base_url}}/api/v1/coaches/me/plan
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{process.env.USER_BEARER_TOKEN}}
+}
+
+tests {
+  test("Returns an unpaginated array of owned plan summaries", function () {
+    expect(res.getStatus()).to.equal(200);
+    const { success, data } = res.getBody();
+    expect(success).to.equal(true);
+    expect(data).to.be.an("array");
+    for (const plan of data) {
+      expect(plan.id).to.be.a("number");
+      expect(plan.is_active).to.be.a("boolean");
+      expect(plan.is_archived).to.be.a("boolean");
+      expect(plan.features).to.be.an("array");
+      expect(plan.features.length).to.be.at.most(3);
+      expect(plan).to.not.have.any.keys("description", "includes", "general_fields", "created_at", "updated_at");
+    }
+  });
+}
+
+docs {
+  Set USER_BEARER_TOKEN to a COACH access token. The array in data includes inactive and archived plans owned by the signed-in coach. A coach with no plans receives an empty array.
+  Copy an id from data into plan_id in Get my coach plan details.
+}

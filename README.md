@@ -319,6 +319,8 @@ Auth must use contract 3.1.0 numeric subjects, production mTLS, and user status/
 |---|---|
 | GET /api/v1/coaches/{coach_id} | Public coach profile with all public plan summaries in `data.plans` |
 | GET /api/v1/coaches/{coach_id}/plan/{plan_id} | Public details for one plan owned by the coach |
+| GET /api/v1/coaches/me/plan | COACH, returns all owned plan summaries in `data` as an unpaginated array |
+| GET /api/v1/coaches/me/plan/{plan_id} | COACH, returns full details for one owned plan |
 | GET/POST /api/v1/coaches/me/plans | COACH; create requires an approved coach |
 | GET /api/v1/coaches/me/plan/form-options | COACH, returns active `includeOptions`, full `generalFields`, and `features` with only `id`, `code`, and `label` |
 | GET /api/v1/coaches/me/plan/form-options/features/{id} | COACH, returns the active feature and all its active field definitions in `fields` |
@@ -343,6 +345,12 @@ a plan belonging to a different coach returns `404 NOT_FOUND`.
 Both public plan views include `price`, `compare_at_price` and `currency` in the
 plan's stored currency. For `IRR` plans, `price_rial` and `compare_at_price_rial`
 contain the rial amounts. For other currencies both rial fields are `null`.
+
+The `/me/plan` reads use the same summary and detail fields and include both
+`is_active` and `is_archived`. They cover every plan owned by the authenticated
+coach, including inactive and archived plans. The detail also includes `status`,
+`created_at` and `updated_at`. A missing plan or one owned by another coach
+returns `404 NOT_FOUND`.
 
 Ownership always comes from the token: a plan mutation addressed at another
 coach's plan returns 403, and an unknown plan returns 404. Plan writes accept

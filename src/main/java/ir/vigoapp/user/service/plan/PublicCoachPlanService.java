@@ -5,11 +5,7 @@ import ir.vigoapp.user.domain.AccountStatus;
 import ir.vigoapp.user.domain.CoachStatus;
 import ir.vigoapp.user.domain.Role;
 import ir.vigoapp.user.dto.plan.PublicCoachPlan.Detail;
-import ir.vigoapp.user.dto.plan.PublicCoachPlan.Feature;
-import ir.vigoapp.user.dto.plan.PublicCoachPlan.Field;
-import ir.vigoapp.user.dto.plan.PublicCoachPlan.Label;
 import ir.vigoapp.user.dto.plan.PublicCoachPlan.Summary;
-import ir.vigoapp.user.repository.CoachPlanIncludeRepository;
 import ir.vigoapp.user.repository.CoachPlanRepository;
 import ir.vigoapp.user.repository.plan.CoachPlanSelectionRepository;
 import lombok.RequiredArgsConstructor;
@@ -17,25 +13,22 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 @Service
 @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
 @RequiredArgsConstructor
 public class PublicCoachPlanService {
     private final CoachPlanRepository plans;
-    private final CoachPlanIncludeRepository includes;
     private final CoachPlanSelectionRepository selections;
+    private final CoachPlanContentReader contents;
 
     /** Used after the profile's public eligibility check, in the same transaction. */
     public List<Summary> summariesForPublicCoach(long coachId) {
         var summaries = plans.findByCoachIdAndActiveTrueAndArchivedFalseOrderByDisplayOrderAscIdAsc(coachId);
         if (summaries.isEmpty()) return List.of();
 
-        var previews = selections.findPreviewFeatures(coachId);
+        var previews = selections.findPreviewFeatures(coachId, true);
         return summaries.stream().map(plan -> new Summary(plan.getId(), plan.getTitle(), plan.getSummary(),
                 plan.getPrice(), plan.getCompareAtPrice(), plan.getCurrency(), plan.getDurationDays(),
                 plan.isRecommended(), plan.getDisplayOrder(), previews.getOrDefault(plan.getId(), List.of()))).toList();
@@ -45,27 +38,10 @@ public class PublicCoachPlanService {
         var plan = plans.findPublicPlan(coachId, planId, CoachStatus.APPROVED, AccountStatus.ACTIVE, Role.COACH)
                 .orElseThrow(ApiException::notFound);
 
-        var generalFields = new ArrayList<Field>();
-        Map<Long, List<Field>> fieldsByFeature = new HashMap<>();
-        for (var selection : selections.findSelectedFields(planId)) {
-            if (selection.featureId() == null) {
-                generalFields.add(selection.field());
-            } else {
-                fieldsByFeature.computeIfAbsent(selection.featureId(), key -> new ArrayList<>()).add(selection.field());
-            }
-        }
-
-        var features = selections.findSelectedFeatures(planId).stream()
-                .map(feature -> new Feature(feature.id(), feature.code(), feature.label(), feature.description(),
-                        feature.category(), fieldsByFeature.getOrDefault(feature.id(), List.of())))
-                .toList();
-        var includedServices = includes.findOptionsForPlan(planId).stream()
-                .map(option -> new Label(option.getId(), option.getCode(), option.getLabel()))
-                .toList();
-
+        var content = contents.load(planId);
         return new Detail(plan.getId(), coachId, plan.getTitle(), plan.getSummary(), plan.getDescription(),
                 plan.getPrice(), plan.getCompareAtPrice(), plan.getCurrency(), plan.getDurationDays(),
-                plan.getFirstDeliveryDays(), plan.isRecommended(), plan.getDisplayOrder(), includedServices, features,
-                generalFields);
+                plan.getFirstDeliveryDays(), plan.isRecommended(), plan.getDisplayOrder(),
+                content.includes(), content.features(), content.generalFields());
     }
 }

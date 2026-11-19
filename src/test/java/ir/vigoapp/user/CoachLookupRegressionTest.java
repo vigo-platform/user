@@ -2,6 +2,7 @@ package ir.vigoapp.user;
 
 import ir.vigoapp.user.api.Errors;
 import ir.vigoapp.user.api.UserController;
+import ir.vigoapp.user.api.plan.CoachPlanController;
 import ir.vigoapp.user.api.plan.PublicCoachPlanController;
 import ir.vigoapp.user.dto.plan.PlanFieldValue;
 import ir.vigoapp.user.entity.CoachProfile;
@@ -11,12 +12,15 @@ import io.zonky.test.db.postgres.embedded.EmbeddedPostgres;
 import ir.vigoapp.user.api.ApiException;
 import ir.vigoapp.user.domain.*;
 import ir.vigoapp.user.outbox.OutboxWriter;
-import ir.vigoapp.user.repository.CoachPlanIncludeRepository;
 import ir.vigoapp.user.repository.CoachPlanRepository;
 import ir.vigoapp.user.repository.CoachRepository;
 import ir.vigoapp.user.repository.UserRepository;
 import ir.vigoapp.user.repository.plan.CoachPlanSelectionRepository;
+import ir.vigoapp.user.repository.plan.PlanCatalogRepository;
 import ir.vigoapp.user.service.ProfileService;
+import ir.vigoapp.user.service.plan.CoachPlanContentReader;
+import ir.vigoapp.user.service.plan.CoachPlanService;
+import ir.vigoapp.user.service.plan.OwnedCoachPlanService;
 import ir.vigoapp.user.service.plan.PublicCoachPlanService;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityManagerFactory;
@@ -24,6 +28,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Import;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -31,6 +36,7 @@ import org.springframework.orm.jpa.JpaTransactionManager;
 import org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean;
 import org.springframework.orm.jpa.SharedEntityManagerCreator;
 import org.springframework.orm.jpa.vendor.HibernateJpaVendorAdapter;
+import org.springframework.security.authentication.TestingAuthenticationToken;
 import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -62,9 +68,12 @@ class CoachLookupRegressionTest {
  @Configuration
  @EnableJpaRepositories(basePackageClasses=CoachRepository.class)
  @EnableTransactionManagement
+ @Import({CoachPlanService.class, OwnedCoachPlanService.class, PublicCoachPlanService.class,
+  CoachPlanContentReader.class, PlanCatalogRepository.class})
  static class Config {
   @Bean(destroyMethod="close") EmbeddedPostgres postgres() throws IOException { return EmbeddedPostgres.builder().start(); }
   @Bean DataSource dataSource(EmbeddedPostgres postgres) { return postgres.getPostgresDatabase(); }
+  @Bean JdbcClient jdbcClient(DataSource dataSource) { return JdbcClient.create(dataSource); }
   @Bean LocalContainerEntityManagerFactoryBean entityManagerFactory(DataSource dataSource) {
    var factory=new LocalContainerEntityManagerFactoryBean();
    factory.setDataSource(dataSource);factory.setPackagesToScan(UserAccount.class.getPackageName());
@@ -74,12 +83,8 @@ class CoachLookupRegressionTest {
   @Bean PlatformTransactionManager transactionManager(EntityManagerFactory factory) { return new JpaTransactionManager(factory); }
   @Bean EntityManager entityManager(EntityManagerFactory factory) { return SharedEntityManagerCreator.createSharedEntityManager(factory); }
   @Bean ObjectMapper objectMapper() { return JsonMapper.builder().findAndAddModules().build(); }
-  @Bean CoachPlanSelectionRepository selections(DataSource dataSource,ObjectMapper json) {
-   return new CoachPlanSelectionRepository(JdbcClient.create(dataSource),json);
-  }
-  @Bean PublicCoachPlanService publicPlans(CoachPlanRepository plans,CoachPlanIncludeRepository includes,
-    CoachPlanSelectionRepository selections) {
-   return new PublicCoachPlanService(plans,includes,selections);
+  @Bean CoachPlanSelectionRepository selections(JdbcClient jdbc,ObjectMapper json) {
+   return new CoachPlanSelectionRepository(jdbc,json);
   }
   @Bean ProfileService profiles(UserRepository users,CoachRepository coaches,ObjectMapper json,CoachPlanRepository plans,
     PublicCoachPlanService publicPlans) {
@@ -92,6 +97,8 @@ class CoachLookupRegressionTest {
  @Autowired @org.springframework.beans.factory.annotation.Qualifier("entityManager") EntityManager em;
  @Autowired PlatformTransactionManager manager;
  @Autowired PublicCoachPlanService publicPlans;
+ @Autowired CoachPlanService formOptions;
+ @Autowired OwnedCoachPlanService ownPlans;
  @Autowired CoachPlanSelectionRepository selections;
  @Autowired DataSource dataSource;
  @Autowired ObjectMapper json;
@@ -252,6 +259,80 @@ class CoachLookupRegressionTest {
   }
   mvc.perform(get("/api/v1/coaches/{coachId}",coach)).andExpect(status().isOk())
    .andExpect(jsonPath("$.data.plans").isArray()).andExpect(jsonPath("$.data.plans").isEmpty());
+ }
+ @Test void coachReadsAllOwnPlanStatesWithSummariesAndFullDetail() throws Exception {
+  long coach = seed(CoachStatus.APPROVED);
+  long otherCoach = seed(CoachStatus.APPROVED);
+  long emptyCoach = seed(CoachStatus.APPROVED);
+  long active = seedPlan(coach, true, false, 100000, null, "IRR");
+  long archived = seedPlan(coach, true, true, 100000, 135000L, "IRR");
+  long inactive = seedPlan(coach, false, false, 25, null, "USD");
+  long inactiveArchived = seedPlan(coach, false, true, 50000, null, "IRR");
+  long foreign = seedPlan(otherCoach, true, false, 100000, null, "IRR");
+
+  var jdbc = new JdbcTemplate(dataSource);
+  jdbc.update("""
+   UPDATE coach_plans SET summary='Saved summary', description='Saved description', first_delivery_days=3,
+    is_recommended=true, created_at=TIMESTAMPTZ '2025-01-01 10:00:00+00',
+    updated_at=TIMESTAMPTZ '2025-01-02 11:00:00+00' WHERE id=?
+   """, archived);
+  jdbc.update("UPDATE coach_plans SET display_order=5 WHERE id IN (?, ?, ?)", active, inactive, inactiveArchived);
+  long first = seedFeature(jdbc, "OWN_FIRST", 10);
+  long second = seedFeature(jdbc, "OWN_SECOND", 20);
+  long third = seedFeature(jdbc, "OWN_THIRD", 30);
+  long fourth = seedFeature(jdbc, "OWN_FOURTH", 40);
+  long count = seedField(jdbc, first, "OWN_SESSION_COUNT", "INTEGER", "{}");
+  long level = seedField(jdbc, null, "OWN_PLAN_LEVEL", "MULTI_SELECT",
+   "{\"options\":[{\"code\":\"BEGINNER\",\"label\":\"Beginner\"}]}");
+  new TransactionTemplate(manager).executeWithoutResult(tx -> selections.replace(archived,
+   List.of(fourth, second, first, third), List.of(new PlanFieldValue(count, json.readTree("3")),
+    new PlanFieldValue(level, json.readTree("[\"BEGINNER\"]")))));
+  long include = jdbc.queryForObject("""
+   INSERT INTO plan_include_catalog (code,label,is_active,display_order,created_at,updated_at)
+   VALUES ('OWN_WORKOUT','Workout',false,10,now(),now()) RETURNING id
+   """, Long.class);
+  jdbc.update("INSERT INTO coach_plan_includes (plan_id,include_id) VALUES (?,?)", archived, include);
+
+  var mvc = MockMvcBuilders.standaloneSetup(new CoachPlanController(formOptions, ownPlans))
+   .setControllerAdvice(new Errors()).build();
+  var actor = new TestingAuthenticationToken(Long.toString(coach), null, "ROLE_COACH");
+  String path = "/api/v1/coaches/me/plan";
+  mvc.perform(get(path).principal(actor)).andExpect(status().isOk())
+   .andExpect(jsonPath("$.data[*].id").value(contains((int)archived, (int)active, (int)inactive, (int)inactiveArchived)))
+   .andExpect(jsonPath("$.data[*].is_active").value(contains(true, true, false, false)))
+   .andExpect(jsonPath("$.data[*].is_archived").value(contains(true, false, false, true)))
+   .andExpect(jsonPath("$.data[0].summary").value("Saved summary"))
+   .andExpect(jsonPath("$.data[0].description").doesNotHaveJsonPath())
+   .andExpect(jsonPath("$.data[0].created_at").doesNotHaveJsonPath())
+   .andExpect(jsonPath("$.data[0].features[*].code").value(contains("OWN_FIRST", "OWN_SECOND", "OWN_THIRD")))
+   .andExpect(jsonPath("$.data[2].price_rial").hasJsonPath())
+   .andExpect(jsonPath("$.data[2].price_rial").isEmpty());
+
+  mvc.perform(get(path + "/{planId}", archived).principal(actor)).andExpect(status().isOk())
+   .andExpect(jsonPath("$.data.id").value(archived))
+   .andExpect(jsonPath("$.data.coach_id").value(coach))
+   .andExpect(jsonPath("$.data.description").value("Saved description"))
+   .andExpect(jsonPath("$.data.first_delivery_days").value(3))
+   .andExpect(jsonPath("$.data.compare_at_price_rial").value(135000))
+   .andExpect(jsonPath("$.data.is_recommended").value(true))
+   .andExpect(jsonPath("$.data.is_active").value(true))
+   .andExpect(jsonPath("$.data.is_archived").value(true))
+   .andExpect(jsonPath("$.data.status").value("ARCHIVED"))
+   .andExpect(jsonPath("$.data.created_at").value("2025-01-01T10:00:00Z"))
+   .andExpect(jsonPath("$.data.updated_at").value("2025-01-02T11:00:00Z"))
+   .andExpect(jsonPath("$.data.includes[0].code").value("OWN_WORKOUT"))
+   .andExpect(jsonPath("$.data.features[*].code").value(contains("OWN_FIRST", "OWN_SECOND", "OWN_THIRD", "OWN_FOURTH")))
+   .andExpect(jsonPath("$.data.features[0].fields[0].value").value(3))
+   .andExpect(jsonPath("$.data.general_fields[0].selected_options[0].label").value("Beginner"));
+
+  mvc.perform(get(path + "/{planId}", inactive).principal(actor)).andExpect(status().isOk())
+   .andExpect(jsonPath("$.data.status").value("INACTIVE"));
+  for (long planId : List.of(foreign, Long.MAX_VALUE)) {
+   mvc.perform(get(path + "/{planId}", planId).principal(actor)).andExpect(status().isNotFound())
+    .andExpect(jsonPath("$.code").value("NOT_FOUND"));
+  }
+  mvc.perform(get(path).principal(new TestingAuthenticationToken(Long.toString(emptyCoach), null, "ROLE_COACH")))
+   .andExpect(status().isOk()).andExpect(jsonPath("$.data").isArray()).andExpect(jsonPath("$.data").isEmpty());
  }
  @Test void publicListIdResolvesBothDetailsAndDecisionsReturnConflictNotNotFound() {
   var id=seed(CoachStatus.APPROVED);
